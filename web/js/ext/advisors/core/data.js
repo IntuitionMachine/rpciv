@@ -69,7 +69,7 @@ export function buildData(app) {
     F("population", "Population", "int", { unit: "people", source: src, group: "People", description: `Residents (${vintage}, B01003).`, lens: "density" }),
     F("growth", "Growth", "signed", { unit: "population change", higher_is: "neutral", source: "pep_population", group: "People", description: `Population change ${(nat.growth_years || []).join("–")} (Census population estimates, same borders both years).` }),
     F("gdp", "GDP", "money", { unit: "$ per year", source: "bea_gdp", description: `${nation.gdp_vintage || "BEA"}: GDP in current dollars, counted where the work is done.` }),
-    F("gdp_pc", "GDP per person", "usd", { unit: "$ per resident", higher_is: "good", source: "bea_gdp", description: "GDP ÷ residents (BEA GDP year ÷ ACS population year)." }),
+    F("gdp_pc", "GDP per person", "usd", { unit: "₱ per resident", higher_is: "good", source: "psa_gdp_ppa", description: "GDP ÷ residents (PSA GRDP/PPA ÷ 2024 Census population)." }),
     F("median_income", "Income", "usd", { unit: "median household income", higher_is: "good", source: src, group: "Prosperity", description: `Median household income (${vintage}).`, lens: "income" }),
     F("median_rent", "Rent", "usd", { unit: "median gross rent / month", source: src, group: "Prosperity", description: `Median gross rent per month (${vintage}).` }),
     F("home_value", "Home value", "usd", { unit: "median home value", source: src, group: "Prosperity", description: `Median value of owner-occupied homes (${vintage}).`, lens: "home" }),
