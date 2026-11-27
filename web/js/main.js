@@ -440,7 +440,7 @@ async function main() {
   }
 
   function focusCity(city) {
-    const s = Math.min(cam.maxScale, Math.max(cam.scale, 0.8));
+    const s = Math.min(cam.maxScale, Math.max(cam.scale, 20 / w.grid.R));
     flyToVisible(w.grid.cx(city.cell), w.grid.cy(city.cell), s);
   }
 
@@ -486,7 +486,7 @@ async function main() {
     const a = visibleArea(true);
     const pad = 36;
     const s = Math.min((a.x1 - a.x0 - 2 * pad) / (b.x1 - b.x0), (a.y1 - a.y0 - 2 * pad) / (b.y1 - b.y0));
-    flyToVisible((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, Math.min(2.2, Math.max(fitScale(), s * 0.85))); // a little context around it
+    flyToVisible((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, Math.min(18, Math.max(fitScale(), s * 0.85))); // a little context around it
   }
 
   // --- lens ------------------------------------------------------------------------------------------------------
