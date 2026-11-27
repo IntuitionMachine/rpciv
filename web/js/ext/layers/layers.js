@@ -189,6 +189,137 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     hit: (x, y, Rpx) => hitSites(wonders.list(Rpx), x, y, Rpx, grid()),
     tooltip: (it) => moved(it, tips.wonder?.(it.data, m) ?? null),
   };
+
+  // Iconic Philippine scuba diving sites (dives.json): crisp diver-down flag medallions with type-colored rims
+  // and collision-free italic labels when zoomed in.
+  const diveVisible = (s, Rpx) => (s.tier || 2) === 1 || Rpx >= 2.2;
+  const diveRadius = (s, Rpx) => {
+    const base = clamp(6.0 + Rpx * 0.28, 6.2, 11.2);
+    return (s.tier || 2) === 1 ? base : base * 0.84;
+  };
+  const dives = {
+    id: "dives", z: 66, minRpx: 0.7, snapshot: true,
+    visible: () => !!on.dives && m.dives.length > 0,
+    sig: ver,
+    draw(ctx, vp, w, o) {
+      const list = m.dives;
+      if (!list.length) return;
+      const Rpx = o.Rpx;
+      const padKm = 120 / vp.s;
+      o.screen();
+      ctx.save();
+      if (o.lens) ctx.globalAlpha = 0.78;
+      const placedLabels = [];
+      const overlaps = (b) => placedLabels.some((p) => b[0] < p[2] && p[0] < b[2] && b[1] < p[3] && p[1] < b[3]);
+
+      for (const d of list) {
+        if (!diveVisible(d, Rpx) || !inVp(d, vp, padKm)) continue;
+        const [sx, sy] = o.toScreen(d.x, d.y);
+        const r = diveRadius(d, Rpx);
+        const typeColor = m.diveTypes.get(d.kind)?.color || "#26a69a";
+
+        // Drop shadow + dark backing disc
+        ctx.beginPath();
+        ctx.arc(sx, sy + 1.2, r + 1.1, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(4, 12, 22, 0.55)";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 0.8, 0, Math.PI * 2);
+        ctx.fillStyle = "#0e1d2b";
+        ctx.fill();
+
+        // Type-colored outer ring
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(1.4, r * 0.2);
+        ctx.strokeStyle = typeColor;
+        ctx.stroke();
+
+        // Classic scuba diver-down flag inside the medallion (clipped to inner circle)
+        const ir = r - Math.max(1.1, r * 0.16);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sx, sy, ir, 0, Math.PI * 2);
+        ctx.clip();
+        // Red flag field
+        ctx.fillStyle = "#d63638";
+        ctx.fillRect(sx - ir, sy - ir, ir * 2, ir * 2);
+        // Bold crisp white diagonal stripe (top-left to bottom-right)
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = Math.max(1.8, ir * 0.44);
+        ctx.lineCap = "butt";
+        ctx.beginPath();
+        ctx.moveTo(sx - ir * 1.15, sy - ir * 1.15);
+        ctx.lineTo(sx + ir * 1.15, sy + ir * 1.15);
+        ctx.stroke();
+        ctx.restore();
+
+        // Subtle inner rim highlight for medallion crispness
+        ctx.beginPath();
+        ctx.arc(sx, sy, ir, 0, Math.PI * 2);
+        ctx.lineWidth = 0.7;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.stroke();
+
+        // Reserve the medallion footprint so labels never cover another dive flag
+        placedLabels.push([sx - r - 2, sy - r - 2, sx + r + 2, sy + r + 2]);
+      }
+
+      // Draw clean italic labels next to dive medallions at mid/close zoom (collision-avoided)
+      if (Rpx >= 4.5) {
+        const sz = clamp(9.2 + Rpx * 0.2, 9.5, 12.5);
+        ctx.font = `italic 600 ${sz}px ${GEO_SERIF}`;
+        ctx.textBaseline = "middle";
+        ctx.lineJoin = "round";
+        ctx.miterLimit = 2;
+        for (const d of list) {
+          if (!diveVisible(d, Rpx) || !inVp(d, vp, padKm)) continue;
+          const [sx, sy] = o.toScreen(d.x, d.y);
+          const r = diveRadius(d, Rpx);
+          const tw = ctx.measureText(d.name).width;
+          // Try right of medallion first, then left, then below
+          const candidates = [
+            { align: "left", x: sx + r + 4.5, y: sy, box: [sx + r + 3, sy - sz * 0.65, sx + r + 6 + tw, sy + sz * 0.65] },
+            { align: "right", x: sx - r - 4.5, y: sy, box: [sx - r - 6 - tw, sy - sz * 0.65, sx - r - 3, sy + sz * 0.65] },
+            { align: "center", x: sx, y: sy + r + sz * 0.75, box: [sx - tw * 0.5 - 2, sy + r + 2, sx + tw * 0.5 + 2, sy + r + sz * 1.4] },
+          ];
+          const pick = candidates.find((c) => !overlaps(c.box));
+          if (!pick) continue;
+          placedLabels.push(pick.box);
+          ctx.textAlign = pick.align;
+          ctx.lineWidth = 2.8;
+          ctx.strokeStyle = "rgba(6, 18, 30, 0.88)";
+          ctx.fillStyle = "#e6f6ff";
+          ctx.strokeText(d.name, pick.x, pick.y);
+          ctx.fillText(d.name, pick.x, pick.y);
+        }
+      }
+
+      ctx.restore();
+      o.world();
+    },
+    hit(x, y, Rpx) {
+      const list = m.dives;
+      if (!list.length) return null;
+      const s = Rpx / grid().R;
+      let best = null;
+      let bestD2 = Infinity;
+      for (const d of list) {
+        if (!diveVisible(d, Rpx)) continue;
+        const r = Math.max(10, diveRadius(d, Rpx) + 4);
+        const dx = (x - d.x) * s;
+        const dy = (y - d.y) * s;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= r * r && d2 < bestD2) {
+          bestD2 = d2;
+          best = d;
+        }
+      }
+      return best ? { kind: "dive", data: best } : null;
+    },
+    tooltip: (it) => tips.dive?.(it.data, m) ?? null,
+  };
   const trade = {
     id: "trade", z: 85, minRpx: 0.6,
     visible: () => !!on.trade && m.routes.length > 0,
@@ -464,5 +595,5 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     o.world();
   }
 
-  return [roads, rail, protectedLand, restricted, hubs, forts, wonders, plates, trade, geography];
+  return [roads, rail, protectedLand, restricted, hubs, forts, dives, wonders, plates, trade, geography];
 }

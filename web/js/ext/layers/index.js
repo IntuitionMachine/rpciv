@@ -17,6 +17,7 @@ const TOGGLES = [
   { id: "hubs", label: "Ports & airports", icon: "d-harbor", def: true, title: "Philippine seaports and RoRo terminals (HDX / OSM), airports (OurAirports / CAAP)", layers: ["hubs"] },
   { id: "military", label: "Military", icon: "m-army", def: true, title: "Defense installations as forts, largest ranges as restricted ground", layers: ["forts", "restricted", "plates"] },
   { id: "wonders", label: "Wonders", icon: "w-landmark", def: true, title: "Natural parks, UNESCO heritage sites, top universities and landmarks", layers: ["wonders", "protected", "plates"] },
+  { id: "dives", label: "Dive spots", icon: "m-dive", def: true, title: "Iconic Philippine scuba diving sites — reefs, WWII wrecks, pelagic & macro sanctuaries", layers: ["dives"] },
   { id: "trade", label: "Trade routes", icon: "t-trade", def: false, title: "Largest domestic freight flows between regions (PSA domestic trade)", layers: ["trade"] },
 ];
 
@@ -41,7 +42,7 @@ export function install(app) {
     model.setData(name, data);
     app.requestDraw();
   };
-  for (const name of ["infrastructure", "military", "wonders", "trade"]) {
+  for (const name of ["infrastructure", "military", "wonders", "trade", "dives"]) {
     if (app.data[name] !== undefined) apply(name, app.data[name]);
     else app.loadData(name).then((d) => apply(name, d), (err) => console.warn(`map layers: ${name} failed to load`, err));
   }

@@ -570,6 +570,147 @@ def build_wonders(world: dict, world_web: dict, cities: list[dict], proj: MapPro
     print(f"  wonders.json: {len(wonders)} wonders ({len(ph_unesco)} UNESCO + {len(PARKS)} parks + {len(UNIS)} universities)")
 
 
+def build_dives(world: dict, proj: MapProjection, grid: HexGrid) -> None:
+    """Build web/data/dives.json: 28 iconic Philippine scuba diving sites across Luzon, Palawan, Visayas & Mindanao."""
+    DIVE_TYPES = [
+        {"id": "reef", "name": "Coral reef", "color": "#26a69a"},
+        {"id": "wreck", "name": "Wreck dive", "color": "#d97b29"},
+        {"id": "pelagic", "name": "Pelagic & sharks", "color": "#2f78c4"},
+        {"id": "macro", "name": "Macro & muck", "color": "#b46be8"},
+        {"id": "wall", "name": "Wall & drift", "color": "#3f96b8"},
+        {"id": "cavern", "name": "Cavern & volcanic", "color": "#c95b5b"},
+    ]
+
+    # (id, name, area, region, kind, tier, lon, lat, depth_m, level, season, highlights)
+    RAW_SITES = [
+        # Palawan
+        ("tubbataha", "Tubbataha Reefs", "Sulu Sea, Palawan", "IV-B", "pelagic", 1, 119.883, 8.850,
+         "5–40+ m", "Advanced / Liveaboard", "Mar–Jun",
+         "UNESCO World Heritage atolls; reef & whale sharks, mantas, sheer coral walls."),
+        ("coron-wrecks", "Coron Bay WWII Wrecks", "Busuanga, Palawan", "IV-B", "wreck", 1, 120.068, 11.983,
+         "12–40 m", "Open Water – Advanced", "Nov–Jun",
+         "World-class WWII Japanese fleet wrecks (Irako, Okikawa Maru, Akitsushima) & Barracuda Lake."),
+        ("el-nido", "El Nido / Bacuit Bay", "Northern Palawan", "IV-B", "reef", 2, 119.345, 11.175,
+         "5–30 m", "All levels", "Nov–May",
+         "Limestone-fringed reefs, South Miniloc cabbage corals, Dilumacad tunnel, turtles & macro."),
+        ("honda-bay", "Puerto Princesa / Honda Bay", "Palawan", "IV-B", "reef", 2, 118.830, 9.865,
+         "5–25 m", "Beginner – Intermediate", "Nov–May",
+         "Sheltered sandbar reefs, lush soft corals, reef fish schools, and seasonal whale sharks."),
+
+        # Luzon & Mindoro
+        ("anilao", "Anilao, Mabini", "Batangas", "IV-A", "macro", 1, 120.892, 13.733,
+         "5–30 m", "All levels", "Nov–May (year-round)",
+         "World nudibranch & macro photography capital; frogfish, rhinopias, mimic octopus, blackwater."),
+        ("verde-island", "Verde Island Passage", "Batangas / Mindoro", "IV-A", "wall", 1, 121.072, 13.548,
+         "10–40+ m", "Intermediate – Advanced", "Nov–May",
+         "Center of the Center of Marine Shorefish Biodiversity; dramatic Washing Machine pinnacles & walls."),
+        ("puerto-galera", "Puerto Galera / Sabang", "Oriental Mindoro", "IV-B", "reef", 1, 120.980, 13.524,
+         "5–35 m", "All levels", "Nov–Jun (year-round)",
+         "40+ reef, drift, and wreck sites (Canyons, Alma Jane wreck, Hole in the Wall) with rich biodiversity."),
+        ("apo-reef", "Apo Reef Natural Park", "Occidental Mindoro", "IV-B", "wall", 1, 120.467, 12.667,
+         "10–40+ m", "Intermediate – Advanced", "Nov–May",
+         "World's second-largest contiguous coral reef system; vertical walls, sharks, mantas, eagle rays."),
+        ("subic-wrecks", "Subic Bay Wrecks", "Zambales", "III", "wreck", 2, 120.255, 14.785,
+         "12–42 m", "Open Water – Technical", "Nov–May",
+         "Historic USS New York, El Capitan, and Oryoku Maru wrecks in calm protected bay waters."),
+        ("ticao-manta", "Ticao Pass / Manta Bowl", "Masbate", "V", "pelagic", 1, 123.760, 12.690,
+         "15–35 m", "Advanced", "Dec–May",
+         "Submerged atoll cleaning station famous for oceanic manta rays, hammerheads, and thresher sharks."),
+        ("donsol", "Donsol", "Sorsogon", "V", "pelagic", 2, 123.588, 12.900,
+         "0–15 m", "All levels", "Nov–Jun",
+         "Renowned seasonal aggregation of gentle whale sharks (butanding) feeding in plankton-rich waters."),
+        ("bolinao", "Bolinao & Hundred Islands", "Pangasinan", "I", "reef", 2, 119.915, 16.395,
+         "5–25 m", "Beginner – Intermediate", "Nov–May",
+         "Lingayen Gulf coral gardens, giant clam nurseries, and limestone islet drop-offs."),
+        ("batanes", "Basco & Sabtang Reefs", "Batanes", "II", "cavern", 2, 121.950, 20.440,
+         "10–35 m", "Intermediate – Advanced", "Mar–Jun",
+         "Volcanic basalt arches, crystal Luzon Strait visibility, and dramatic underwater topography."),
+
+        # Visayas
+        ("malapascua", "Malapascua / Monad Shoal", "Northern Cebu", "VII", "pelagic", 1, 124.198, 11.305,
+         "15–32 m", "Advanced", "Year-round",
+         "The only place on Earth for reliable daily dawn encounters with pelagic thresher sharks."),
+        ("gato-island", "Gato Island Marine Reserve", "Northern Cebu", "VII", "cavern", 2, 124.020, 11.448,
+         "8–28 m", "Intermediate", "Year-round",
+         "Iconic 30 m swim-through cave housing whitetip reef sharks, sea snakes, seahorses & nudibranchs."),
+        ("moalboal", "Moalboal / Pescador Island", "Southwestern Cebu", "VII", "pelagic", 1, 123.343, 9.924,
+         "5–40 m", "All levels", "Year-round",
+         "Millions-strong Panagsama sardine run right off the shore plus Pescador Island's sheer coral cathedral."),
+        ("sumilon", "Sumilon Island Sanctuary", "Oslob, Cebu", "VII", "wall", 2, 123.389, 9.431,
+         "8–35 m", "All levels", "Nov–May",
+         "Philippines' first marine protected area (1974); blacktip reef sharks, vibrant walls & drift dives."),
+        ("apo-island", "Apo Island Marine Sanctuary", "Negros Oriental", "NIR", "reef", 1, 123.271, 9.078,
+         "5–35 m", "All levels", "Year-round",
+         "Globally celebrated community-run marine reserve; abundant green & hawksbill turtles, huge jack schools."),
+        ("dauin", "Dauin Marine Sanctuaries", "Negros Oriental", "NIR", "macro", 2, 123.268, 9.190,
+         "5–25 m", "All levels", "Year-round",
+         "Premier volcanic-sand muck diving: flamboyant cuttlefish, ghost pipefish, frogfish & blue-ringed octopus."),
+        ("balicasag", "Balicasag Island", "Panglao, Bohol", "VII", "wall", 1, 123.683, 9.518,
+         "8–40+ m", "All levels", "Year-round",
+         "Steep Black Forest & Cathedral walls teeming with sea turtles, barracuda tornadoes & schooling jacks."),
+        ("cabilao", "Cabilao Island", "Loon, Bohol", "VII", "wall", 2, 123.773, 9.888,
+         "10–40 m", "Intermediate", "Nov–May",
+         "Quiet Bohol Strait walls rich in pygmy seahorses, gorgonian sea fans, and occasional hammerheads."),
+        ("siquijor", "Siquijor / Paliton Wall", "Siquijor", "NIR", "wall", 2, 123.458, 9.170,
+         "8–35 m", "All levels", "Nov–May",
+         "Healthy uncrowded reefs at Tubod Sanctuary and sheer coral overhangs along Paliton Wall."),
+        ("boracay-yapak", "Boracay / Yapak Wall", "Aklan", "VI", "wall", 2, 121.912, 11.998,
+         "18–45 m", "Advanced", "Nov–May",
+         "Deep pelagic drop-off with grey reef sharks, eagle rays, tunas, plus Camia wreck & Crocodile Island."),
+        ("sogod-bay", "Sogod Bay / Padre Burgos", "Southern Leyte", "VIII", "pelagic", 1, 125.035, 10.025,
+         "5–40 m", "All levels", "Nov–May",
+         "Pristine Napantao & Limasawa coral walls, rich macro life, and seasonal whale shark visits."),
+
+        # Mindanao
+        ("camiguin", "Camiguin / Sunken Cemetery", "Camiguin", "X", "cavern", 1, 124.633, 9.210,
+         "5–35 m", "All levels", "Mar–Oct",
+         "Coral-encrusted 1871 volcanic Sunken Cemetery, Black Forest giant sea fans & Mantigue Island walls."),
+        ("siargao", "Siargao / Blue Cathedral", "Surigao del Norte", "XIII", "cavern", 2, 126.178, 9.795,
+         "10–35 m", "Intermediate – Advanced", "Mar–Oct",
+         "Dramatic sunlit limestone cavern opening to the Philippine Sea, plus Shark Point & vibrant outer reefs."),
+        ("samal-talikud", "Samal & Talikud Island", "Davao Gulf", "XI", "reef", 2, 125.695, 6.935,
+         "5–35 m", "All levels", "Year-round",
+         "Giant table corals at Coral Garden, Mansud Wall drop-offs, and protected Davao Gulf wrecks."),
+        ("sarangani", "Sarangani Bay / Lemlunay", "Sarangani", "XII", "wall", 2, 125.030, 5.935,
+         "8–40 m", "All levels", "Year-round",
+         "Crystal-clear Celebes Sea walls, WWII wrecks, pygmy seahorses, and frequent dolphin pods."),
+    ]
+
+    sites = []
+    for sid, name, area, region, kind, tier, lon, lat, depth_m, level, season, highlights in RAW_SITES:
+        x, y = proj(lon, lat)
+        cell = grid.cell_at(x, y)
+        if not (0 <= cell < grid.size):
+            continue
+        sites.append({
+            "id": sid,
+            "name": name,
+            "area": area,
+            "region": region,
+            "kind": kind,
+            "tier": tier,
+            "x": round(x, 1),
+            "y": round(y, 1),
+            "cell": cell,
+            "lat": lat,
+            "lon": lon,
+            "depth_m": depth_m,
+            "level": level,
+            "season": season,
+            "highlights": highlights,
+        })
+
+    write_web("dives.json", {
+        "version": 1,
+        "vintage": "Curated Philippine Dive Atlas (DOT / Coral Triangle)",
+        "types": DIVE_TYPES,
+        "sites": sites,
+    })
+    t1 = sum(1 for s in sites if s["tier"] == 1)
+    t2 = sum(1 for s in sites if s["tier"] == 2)
+    print(f"  dives.json: {len(sites)} dive sites ({t1} tier-1 flagship, {t2} tier-2 regional)")
+
+
 def build_sources() -> None:
     """Generate web/data/sources.json (the Almanac) from every data/philippines/*/manifest.json."""
     META = {
@@ -629,6 +770,7 @@ def build() -> None:
     build_resources(world, world_web, cities, proj, grid)
     build_infrastructure(world, world_web, cities, proj, grid)
     build_wonders(world, world_web, cities, proj, grid)
+    build_dives(world, proj, grid)
     build_sources()
 
     # Remove stale USA-only optional layers so no US data leaks into the Philippine app

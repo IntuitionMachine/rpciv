@@ -76,6 +76,7 @@ export function createModel(w) {
   const m = {
     w, version: 0, data: {},
     net: null, ports: [], airports: [], installations: [], ranges: [], parks: [], wonders: [], routes: [],
+    dives: [], diveTypes: new Map(),
     rangeById: new Map(),
     _vis: new Map(),
   };
@@ -107,6 +108,12 @@ export function createModel(w) {
         .map((x) => ({ wonder: x, ...prepareCellSet(w, x.cells) }));
     } else if (name === "trade") {
       m.routes = data ? prepareRoutes(w, data) : [];
+    } else if (name === "dives") {
+      m.diveTypes = new Map((data?.types || []).map((t) => [t.id, t]));
+      m.dives = (data?.sites || [])
+        .filter((s) => s && Number.isFinite(s.x) && Number.isFinite(s.y))
+        .slice()
+        .sort((a, b) => (a.tier || 2) - (b.tier || 2));
     }
     place(m);
     m._vis.clear();

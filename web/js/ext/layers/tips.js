@@ -133,4 +133,21 @@ export const tips = {
     const title = r.name ? `<b>${esc(r.name)}</b> ${muted(cls)}` : `<b>${cls}</b>`;
     return [title, muted("Philippine rail network — PNR, LRT and MRT corridors (OpenStreetMap / DOTr).")].join("<br>");
   },
+  dive(d, m) {
+    const t = m.diveTypes?.get(d.kind);
+    const badgeColor = t?.color || "#26a69a";
+    const badgeName = t?.name || d.kind || "Dive site";
+    const badge = `<span style="display:inline-block;padding:0 5px;border-radius:3px;font-size:10.5px;font-weight:600;background:${esc(badgeColor)}28;border:1px solid ${esc(badgeColor)};color:${esc(badgeColor)};vertical-align:1px">${esc(badgeName)}</span>`;
+    const lines = [
+      `<b>${esc(d.name)}</b> ${badge}`,
+      muted(esc([d.area, d.region ? `Region ${d.region}` : ""].filter(Boolean).join(" · "))),
+    ];
+    const meta = [];
+    if (d.depth_m) meta.push(`Depth <b>${esc(d.depth_m)}</b>`);
+    if (d.season) meta.push(`Season <b>${esc(d.season)}</b>`);
+    if (d.level) meta.push(esc(d.level));
+    if (meta.length) lines.push(meta.join(" · "));
+    if (d.highlights) lines.push(esc(d.highlights));
+    return lines.join("<br>");
+  },
 };
