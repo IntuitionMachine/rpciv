@@ -116,13 +116,13 @@ export function mount(ctx) {
   const sizeSort = (r) => (isMW(r.type) && fin(r.value) ? r.value : null);
   const table = createTable(tBody, {
     caption: "Mapped resource sites",
-    search: "Search sites, states, operators",
+    search: "Search sites, regions, operators",
     searchText: (r) => `${r.name} ${r.state || ""} ${r.detail || ""} ${typeById.get(r.type)?.name || ""}`,
     rank: true,
     columns: [
       { key: "name", label: "Site", align: "l", width: "minmax(0,1.7fr)", value: (r) => r.name, html: (r) => `<span class="ic">${glyph(typeById.get(r.type), 13)}</span>${esc(r.name)}` },
       { key: "type", label: "Type", align: "l", width: "minmax(0,1fr)", value: (r) => typeById.get(r.type)?.name, text: (r) => typeById.get(r.type)?.name.replace(/ \(shale play\)/, "") || r.type },
-      { key: "state", label: "State", align: "l", width: "46px", value: (r) => r.state, text: (r) => r.state || "–" },
+      { key: "state", label: "Region", align: "l", width: "54px", value: (r) => r.state, text: (r) => r.state || "–" },
       { key: "value", label: "Size", width: "minmax(0,.95fr)", value: sizeSort, text: (r) => sizeText(r), title: "Sort by capacity (MW; other units sort last)" },
     ],
     rows: [],
@@ -147,15 +147,15 @@ export function mount(ctx) {
     focusPoint(app, r.x, r.y, Math.min(app.cam.maxScale, Math.max(app.cam.scale, (app.cam.fitScale || 1) * 3.2)));
   }
 
-  // --- per state ------------------------------------------------------------------------------------------------
-  const sBody = section(el, { title: "Power by state", note: "Mapped capacity per state, by type. Click a state to filter everything to it; click it again to clear." });
+  // --- per region -----------------------------------------------------------------------------------------------
+  const sBody = section(el, { title: "Power by region", note: "Mapped capacity per region, by type. Click a region to filter everything to it; click it again to clear." });
   const stateRows = states
     .map((s, i) => ({ key: s.abbr, label: s.name, idx: i, parts: s.energy?.by_type || {}, total: s.energy?.total || 0, text: mw(s.energy?.total) }))
     .filter((r) => r.total > 0)
     .sort((a, b) => b.total - a.total);
   const stacks = stackedBars(sBody, {
     rows: stateRows, keys: mwTypes.map((t) => ({ key: t.id, label: t.name, color: t.color })), fmt: (v) => mw(v),
-    ariaLabel: "Mapped power capacity by state",
+    ariaLabel: "Mapped power capacity by region",
     onHover: (x) => {
       if (!x) return link.hover(null);
       const sIdx = x.row.idx;
@@ -179,11 +179,10 @@ export function mount(ctx) {
       <p>${esc(ty.description)}</p><span class="src">Source: ${esc(src ? `${src.title} (${src.vintage || src.publisher})` : ty.source)}</span></div></div>`;
   }).join("")}`).join("");
 
-  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["eia_860m", "eia_coal", "msha_mines", "eia_shale_plays"], [
-    "Only sites above each type's threshold are mapped (e.g. gas plants of 1,500 MW or more, wind clustered per hex at 500 MW or more), so totals are <b>not</b> state or national capacity.",
-    "Capacity is nameplate-style net summer capacity (MW), not how much electricity a site produces: a 1,000 MW solar farm generates far less in a year than a 1,000 MW nuclear plant.",
-    "Mines are sized by employees (MSHA) or coal output (EIA); oil and gas plays by area. These units cannot be added to MW.",
-    "A site counts in the state its operator files it under; a few border sites sit in a hex another state owns.",
+  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["wri_power_plants"], [
+    "Mapped power plants come from the WRI Global Power Plant Database (compiled from Philippine DOE records); small embedded generators may not be listed, so totals are mapped capacity rather than full grid capacity.",
+    "Capacity is installed capacity (MW), not how much electricity a plant generates in a year: solar and wind have lower capacity factors than geothermal or coal baseload plants.",
+    "A site counts in the region it is located in.",
   ]));
 
   // --- map ------------------------------------------------------------------------------------------------------
@@ -223,7 +222,7 @@ export function mount(ctx) {
     const sIdx = st.state ? stateIdx.get(st.state) : null;
     link.base({ dimOthers: true, states: sIdx != null ? new Set([sIdx]) : undefined });
     stateChip.innerHTML = st.state
-      ? `<span class="adv-fchip">State: <b>${esc(states[sIdx]?.name || st.state)}</b> · ${int(vis.length)} sites<button type="button" data-clear-state aria-label="Clear the state filter">✕</button></span>`
+      ? `<span class="adv-fchip">Region: <b>${esc(states[sIdx]?.name || st.state)}</b> · ${int(vis.length)} sites<button type="button" data-clear-state aria-label="Clear the region filter">✕</button></span>`
       : "";
     const r = (v) => 24 * Math.sqrt(v / vMax);
     legendBox.innerHTML = sizeLegend([250, 1000, 4000].filter((v) => v <= vMax * 1.2), r, (v) => `${int(v)} MW`, "Circle area = capacity");

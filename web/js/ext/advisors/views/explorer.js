@@ -23,13 +23,13 @@ const SHORT = {
   population: "People", gdp_pc: "GDP per person", median_income: "Income", median_rent: "Rent", unemployment: "Unemploy&shy;ment",
   affordability: "Home ÷ income", rent_burden: "Rent ÷ income", homeownership: "Home&shy;owners", land_km2: "Land area",
   energy_mw: "Mapped power", foreign_born: "Born abroad", median_age: "Median age", uninsured: "Unin&shy;sured", broadband: "Broad&shy;band",
-  // county lenses, military, industry districts, citizens
+  // provincial lenses, military, industry districts, citizens
   faith_tradition: "Largest tradition", amenities: "Amen&shy;ities", mhlth: "Mental distress", loneliness: "Lone&shy;liness", disasters: "Disas&shy;ters",
   veterans_pct: "Veterans share", armed_forces: "Armed forces", armed_forces_pct: "Armed forces share", mil_active: "Active duty",
-  mil_guard_reserve: "Guard & Reserve", mil_civilian: "DoD civilians", def_spending: "Defense $", def_per_resident: "Defense $ per resident",
+  mil_guard_reserve: "Reserve", mil_civilian: "Defense civilians", def_spending: "Defense ₱", def_per_resident: "Defense ₱ per resident",
   def_pct_gdp: "Defense % of GDP", installations: "Instal&shy;lations", encampment: "Garrison", city_type: "City type", n_districts: "Districts (n)",
-  qcew_jobs: "Jobs (QCEW)", qcew_pay: "Pay (QCEW)", top_industry: "Top industry", top_lq: "Top LQ", cz_median_age: "Median age (1-yr)",
-  cz_degree: "Degree (1-yr)", cz_specialist: "Top citizen", cz_drove_alone: "Drive alone", cz_transit: "Transit", cz_home: "Work from home",
+  qcew_jobs: "District jobs", qcew_pay: "Avg pay", top_industry: "Top industry", top_lq: "Top LQ", cz_median_age: "Median age",
+  cz_degree: "College degree", cz_specialist: "Top citizen", cz_drove_alone: "Drive alone", cz_transit: "Transit", cz_home: "Work from home",
 };
 const OPS = { num: [">", "≥", "<", "≤", "="], text: ["=", "contains", "≠"] };
 
@@ -174,7 +174,7 @@ export async function mount(ctx) {
     ops.setAttribute("aria-label", "Comparison");
     const valIn = document.createElement("input");
     valIn.type = "text";
-    valIn.placeholder = "e.g. 1M, 25%, TX";
+    valIn.placeholder = "e.g. 1M, 25%, NCR";
     valIn.setAttribute("aria-label", "Value");
     const add = document.createElement("button");
     add.type = "button";
@@ -183,7 +183,7 @@ export async function mount(ctx) {
     const syncOps = () => {
       const f = L().field(fsel.value);
       ops.innerHTML = (numeric(f) ? OPS.num : OPS.text).map((o) => `<option>${esc(o)}</option>`).join("");
-      valIn.placeholder = numeric(f) ? (f.format === "pct" || f.format === "signed" ? "e.g. 25%" : f.format === "usd" || f.format === "money" ? "e.g. 80K" : "e.g. 1M") : st.level === "counties" ? "e.g. TX" : "text";
+      valIn.placeholder = numeric(f) ? (f.format === "pct" || f.format === "signed" ? "e.g. 25%" : f.format === "usd" || f.format === "money" ? "e.g. 80K" : "e.g. 1M") : st.level === "counties" ? "e.g. NCR" : "text";
     };
     fsel.select.addEventListener("change", syncOps);
     syncOps();
@@ -352,11 +352,10 @@ export async function mount(ctx) {
     if (!lensFields.length) lensRow.innerHTML = `<span class="adv-note">No map lens for these columns: hover and brush to see places on the map.</span>`;
     fieldInfo.innerHTML = [fx, fy, fs, fc].filter((f, i, a) => f && a.indexOf(f) === i).map((f) => `<p><b>${esc(f.label)}</b>${f.unit ? ` <span class="sub">${esc(f.unit)}</span>` : ""}: ${esc(f.description || "")}</p>`).join("");
     const srcIds = [fx, fy, fs, fc].filter(Boolean).map((f) => f.source).filter(Boolean);
-    srcEl.innerHTML = sourcesHtml(data, [...srcIds, st.level === "counties" ? "acs_5yr" : "acs_1yr"], [
-      "Columns marked ≈ are population-weighted means of county values: a fair guide, not the true median of the area.",
-      `Metro and state data are ${esc(data.vintage)}; county data are ${esc(data.countyVintage)}. GDP is BEA, counted where the work is done; jobs are counted where people live.`,
-      "Alaska and Hawaii are not on the map, so they are not in the tables.",
-      ...(st.level === "counties" && data.countiesOffMap ? [`${int(data.countiesOffMap)} small counties are smaller than one hex: they are in the table and chart but cannot be outlined on the map.`] : []),
+    srcEl.innerHTML = sourcesHtml(data, [...srcIds, "psa_census_2024", "psa_gdp_ppa"], [
+      "Columns marked ≈ are population-weighted means of provincial values: a fair guide, not the true median of the area.",
+      `City and regional data are from ${esc(data.vintage)}; provincial data are from ${esc(data.countyVintage)}. GDP is from PSA GRDP/PPA in current pesos.`,
+      ...(st.level === "counties" && data.countiesOffMap ? [`${int(data.countiesOffMap)} small provinces are smaller than one hex: they are in the table and chart but cannot be outlined on the map.`] : []),
     ]);
   }
 

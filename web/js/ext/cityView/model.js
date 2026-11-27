@@ -85,7 +85,7 @@ export function gdpIndustries(city, nation) {
     const missing = Object.entries(g).filter(([, v]) => v == null).map(([k]) => k);
     rows.push({
       key: "undisclosed", value: und, share: und / total, natShare: 0, lq: null, undisclosed: true, missing,
-      label: "Undisclosed by BEA", short: "Undisclosed", color: "#4a5260", icon: "lock",
+      label: "Undisclosed", short: "Undisclosed", color: "#4a5260", icon: "lock",
     });
   }
   return rows;

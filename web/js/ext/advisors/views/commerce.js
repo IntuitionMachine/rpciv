@@ -29,10 +29,10 @@ export async function mount(ctx) {
   const nm = trade?.national_musd || {};
   const topPort = infra?.ports?.[0], topAir = infra?.airports?.[0];
   el.insertAdjacentHTML("beforeend", tiles([
-    { label: "Domestic freight", value: fin(nm.domestic) ? money(nm.domestic * MUSD) : "–", sub: `${esc(trade?.vintage || "FAF")} · by value` },
+    { label: "Domestic freight", value: fin(nm.domestic) ? money(nm.domestic * MUSD) : "–", sub: `${trade?.vintage || "PSA Domestic Trade"} · by value` },
     { label: "Busiest port", value: topPort ? `${count3(topPort.tons)} t` : "–", sub: topPort ? topPort.name : "" },
     { label: "Busiest airport", value: topAir ? count3(topAir.enplanements) : "–", sub: topAir ? `${topAir.id} boardings ${topAir.year}` : "" },
-  ]) + (trade ? `<p class="adv-callout">Freight values are model estimates from the Freight Analysis Framework, in current dollars: what moves between places, not what each place produces. Imports ${money(nm.import * MUSD)} and exports ${money(nm.export * MUSD)} are counted separately.</p>` : ""));
+  ]) + (trade ? `<p class="adv-callout">Domestic trade values are from PSA Domestic Trade Statistics, in current pesos: goods moving between Philippine regions by sea, air, and road.${(fin(nm.import) && nm.import > 0) || (fin(nm.export) && nm.export > 0) ? ` Imports ${money(nm.import * MUSD)} and exports ${money(nm.export * MUSD)} are counted separately.` : ""}</p>` : ""));
 
   // --- trade routes ---------------------------------------------------------------------------------------------
   let routes = [], zoneById = new Map(), routeCells = new Map(), overlayOff = null;
@@ -52,7 +52,7 @@ export async function mount(ctx) {
     for (const list of routeCells.values()) list.sort((a, b) => b.value_musd - a.value_musd);
     const vMax = Math.max(1, ...routes.map((r) => r.value_musd));
 
-    const rBody = section(el, { title: "Trade routes", kicker: esc(trade.vintage || ""), note: `${esc(trade.rule || "")}` });
+    const rBody = section(el, { title: "Trade routes", kicker: trade.vintage || "", note: `${esc(trade.rule || "")}` });
     // Mode mix of the routes, value-weighted.
     const modeTot = {};
     for (const r of routes) for (const [m, s] of Object.entries(r.modes || {})) modeTot[m] = (modeTot[m] || 0) + (s || 0) * r.value_musd;
@@ -142,10 +142,10 @@ export async function mount(ctx) {
         <h4 class="adv-h4">#${r.rank} ${esc(zoneById.get(r.a)?.name || r.a)} ⇄ ${esc(zoneById.get(r.b)?.name || r.b)}</h4>
         ${tiles([
           { label: "Value", value: money(r.value_musd * MUSD), sub: "both directions" },
-          { label: "Weight", value: `${count3(r.tons_k * 1000)} t`, sub: "short tons" },
-          { label: "Distance", value: `${int(r.dist_km)} km`, sub: `${count3(r.tmiles_m * 1e6)} ton-miles` },
+          { label: "Weight", value: `${count3(r.tons_k * 1000)} t`, sub: "metric tons" },
+          { label: "Distance", value: `${int(r.dist_km)} km`, sub: fin(r.tmiles_m) && r.tmiles_m > 0 ? `${count3(r.tmiles_m * 1e6)} ton-km` : "" },
         ])}
-        <p class="adv-note"><b>By mode:</b> ${parts.map(([m, s]) => `${esc(modeName.get(m) || m)} ${pct(s)}`).join(" · ")}. <b>Largest commodity:</b> ${esc(comm[r.top_commodity] || "–")} (among each zone pair's top five).</p>
+        <p class="adv-note"><b>By mode:</b> ${parts.map(([m, s]) => `${esc(modeName.get(m) || m)} ${pct(s)}`).join(" · ")}. <b>Largest commodity:</b> ${esc(comm[r.top_commodity] || "–")}.</p>
         <button type="button" class="adv-mini" data-unpin>Close</button></div>`;
       rDetail.querySelector("[data-unpin]").addEventListener("click", () => selectRoute(st.route));
     }
@@ -153,7 +153,7 @@ export async function mount(ctx) {
     // Zones table.
     const zBody = section(el, {
       title: "Freight zones",
-      note: "FAF splits the country into metro areas and the rest of each state. Value of freight that starts or ends in each zone (domestic), plus its trade with other countries. Hover to outline a zone's cities; click to see its routes and partners.",
+      note: "Philippine regions and major trade hubs. Value of domestic freight starting or ending in each zone. Hover to outline a zone's cities; click to see its routes and partners.",
     });
     const zoneHighlight = (z) => {
       const cells = new Set();
@@ -163,7 +163,7 @@ export async function mount(ctx) {
     };
     const zones = (trade.zones || []).map((z) => ({ ...z, key: z.id }));
     zTable = createTable(zBody, {
-      caption: "FAF freight zones", rank: true, maxHeight: 260, search: "Search zones",
+      caption: "Domestic freight zones", rank: true, maxHeight: 260, search: "Search zones",
       searchText: (z) => `${z.name} ${(z.states || []).join(" ")}`,
       columns: [
         { key: "name", label: "Zone", align: "l", width: "minmax(0,1.9fr)", value: (z) => z.short || z.name, html: (z) => `${esc(z.short || z.name)} <span class="sub">${esc((z.states || []).join("–"))}</span>`, tip: (z) => z.name },
@@ -181,8 +181,8 @@ export async function mount(ctx) {
       const z = st.zone ? zoneById.get(st.zone) : null;
       if (!z) { zDetail.innerHTML = ""; return; }
       zDetail.innerHTML = `<div class="adv-card-detail"><h4 class="adv-h4">${esc(z.name)}</h4>
-        <p class="adv-note">${z.kind === "rest_of_state" ? "The rest of the state outside its FAF metro zones. " : ""}${int(z.counties)} counties on the map · cities: ${(z.cities || []).slice(0, 6).map((id) => esc(metros.byKey.get(id)?.name || id)).join(", ") || "none on the map"}${(z.cities || []).length > 6 ? "…" : ""}</p>
-        <h4 class="adv-h4">Top partners (any state)</h4><div class="adv-zp"></div></div>`;
+        <p class="adv-note">${int(z.counties)} provinces on the map · cities: ${(z.cities || []).slice(0, 6).map((id) => esc(metros.byKey.get(id)?.name || id)).join(", ") || "none on the map"}${(z.cities || []).length > 6 ? "…" : ""}</p>
+        <h4 class="adv-h4">Top partners (any region)</h4><div class="adv-zp"></div></div>`;
       barList(zDetail.querySelector(".adv-zp"), {
         compact: true, ariaLabel: "Top partner zones",
         rows: (z.partners || []).map(([id, v, m]) => ({ key: id, label: zoneById.get(id)?.name || `Zone ${id} (off the map)`, value: v, text: money(v * MUSD), sub: modeName.get(m) || m, color: MODE_COLOR[m] })),
@@ -259,7 +259,7 @@ export async function mount(ctx) {
   let portBars = null, airBars = null, portBubbles = null, airBubbles = null;
   if (infra) {
     const v = infra.vintage || {};
-    const pBody = section(el, { title: "Ports", kicker: esc(v.ports || ""), note: `${esc(infra.rules?.ports || "")} Bars split each port's tonnage into domestic, imports and exports.` });
+    const pBody = section(el, { title: "Ports", kicker: v.ports || "", note: `${esc(infra.rules?.ports || "")} Bars split each port's tonnage into domestic, imports and exports.` });
     const ports = (infra.ports || []).map((p) => ({ ...p, key: `p${p.id}` }));
     const PK = [{ key: "domestic", label: "Domestic", color: "#8fcbb8" }, { key: "imports", label: "Imports", color: "#4f9ad6" }, { key: "exports", label: "Exports", color: "#d9a457" }];
     const portHover = (p) => {
@@ -272,9 +272,9 @@ export async function mount(ctx) {
       onHover: (x) => portHover(x ? ports.find((p) => p.key === x.row.key) : null),
       onClick: (x) => flyTo(ports.find((p) => p.key === x.row.key)),
     });
-    pBody.insertAdjacentHTML("beforeend", swatchLegend(PK) + `<p class="adv-note">Top 15 of ${int(ports.length)} principal ports in the lower 48 (short tons).</p>`);
+    pBody.insertAdjacentHTML("beforeend", swatchLegend(PK) + `<p class="adv-note">Top 15 of ${int(ports.length)} mapped Philippine ports (metric tons).</p>`);
 
-    const aBody = section(el, { title: "Airports", kicker: esc(v.airports || ""), note: esc(infra.rules?.airports || "") });
+    const aBody = section(el, { title: "Airports", kicker: v.airports || "", note: esc(infra.rules?.airports || "") });
     const airports = (infra.airports || []).map((a) => ({ ...a, key: `a${a.id}` }));
     let aMode = "pax";
     const aHost = mk("div");
@@ -302,7 +302,7 @@ export async function mount(ctx) {
         onHover: (r) => airHover(r ? airports.find((a) => a.key === r.key) : null),
         onClick: (r) => flyTo(airports.find((a) => a.key === r.key)),
       });
-      aHost.insertAdjacentHTML("beforeend", `<p class="adv-note">${aMode === "pax" ? "Passenger boardings (enplanements) in the year; change on the year before." : "All-cargo landed weight in pounds, as the FAA publishes it (aircraft weight landed, not freight carried)."}</p>`);
+      aHost.insertAdjacentHTML("beforeend", `<p class="adv-note">${aMode === "pax" ? "Passenger traffic (enplanements) in the year." : "All-cargo weight handled at the airport."}</p>`);
     }
     drawAir();
 
@@ -352,12 +352,11 @@ export async function mount(ctx) {
     focusPoint(app, p.x, p.y, Math.min(app.cam.maxScale, Math.max(app.cam.scale, (app.cam.fitScale || 1) * 3)));
   }
 
-  el.insertAdjacentHTML("beforeend", sourcesHtml(data, [...(trade?.sources || []), ...(infra?.sources || [])], [
-    "FAF values are model estimates for 2024 in current dollars and thousand short tons; zones are whole metro areas or the rest of a state, so a route between two cities stands for everything moving between their regions.",
-    "Routes count only flows between zones in different states; the drawn line follows mapped highways as a drawing aid (FAF assigns no route). Pipeline routes carry crude oil or gas.",
-    "Rest-of-state zones are drawn from their largest city, though the flow comes from the whole region.",
-    "Port tonnage is calendar 2023 (USACE), two years older than the airport counts (FAA 2025). Port positions are port-area centroids, so long river ports are approximate.",
-    "Natural Earth roads and rails are map art, not statistics: an older, simplified alignment holding about half the real rail network.",
+  el.insertAdjacentHTML("beforeend", sourcesHtml(data, [...(trade?.sources || ["psa_domestic_trade"]), ...(infra?.sources || ["hdx_ports", "hdx_railways", "ourairports", "natural_earth_roads"])], [
+    "Domestic freight values are from PSA Domestic Trade Statistics in current pesos and metric tons; each route represents inter-regional trade between two regions.",
+    "Drawn lines follow mapped highways and sea corridors as a visual guide.",
+    "Ports and ferry terminals are from HOT OpenStreetMap via HDX; airports are from OurAirports.",
+    "Roads and railways are map art derived from Natural Earth and OpenStreetMap.",
   ]));
 
   return {

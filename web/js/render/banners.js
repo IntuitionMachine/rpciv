@@ -558,7 +558,7 @@ function badgeFor(badges, city) {
 
 /** Population floor for a hex radius in screen px: national view shows the big metros, close zoom everything. */
 function popFloor(Rpx) {
-  return Rpx < 5 ? 2e6 : Rpx < 8 ? 7e5 : Rpx < 14 ? 2.5e5 : Rpx < 24 ? 1.5e5 : Rpx < 40 ? 1e5 : Rpx < 70 ? 4e4 : 0;
+  return Rpx < 2 ? 9e5 : Rpx < 5 ? 4e5 : Rpx < 9 ? 2e5 : Rpx < 18 ? 1e5 : Rpx < 36 ? 4e4 : 0;
 }
 
 /**

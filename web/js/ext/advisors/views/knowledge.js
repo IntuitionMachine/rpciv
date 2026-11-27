@@ -63,7 +63,7 @@ export function mount(ctx) {
     const list = mode === "abs" ? topBy(metros.rows, (r) => r.v.y_science, { n: 12 }) : topBy(metros.rows, share, { n: 12, min: METRO_MIN });
     barList(sHost, {
       rank: true, ariaLabel: "Science leaders",
-      rows: list.map((x) => ({ key: x.r.key, label: x.r.name, sub: mode === "abs" ? pct(share(x.r)) : `×${(share(x.r) / usShare).toFixed(2)} U.S.`, value: x.v, text: mode === "abs" ? count3(x.v) : pct(x.v), color: sci?.color, row: x.r })),
+      rows: list.map((x) => ({ key: x.r.key, label: x.r.name, sub: mode === "abs" ? pct(share(x.r)) : `×${(share(x.r) / usShare).toFixed(2)} PH`, value: x.v, text: mode === "abs" ? count3(x.v) : pct(x.v), color: sci?.color, row: x.r })),
       onHover: (r) => link.hover(r ? rowsHighlight(metros, [r.row]) : null),
       onClick: (r) => metros.focus(r.row),
     });
@@ -71,18 +71,18 @@ export function mount(ctx) {
   drawSci();
 
   if (!counties) {
-    el.insertAdjacentHTML("beforeend", `<p class="adv-empty pad">counties.json is not built, so the county charts are missing.</p>`);
-    el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["acs_1yr"], []));
+    el.insertAdjacentHTML("beforeend", `<p class="adv-empty pad">counties.json is not built, so the provincial charts are missing.</p>`);
+    el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["psa_lfs", "psa_digital"], []));
     return {};
   }
 
   // --- degrees vs income ----------------------------------------------------------------------------------------
-  const dBody = section(el, { title: "Degrees and income", note: "Share of adults with a bachelor's degree or more against median household income; colour = broadband. Drag to select; hover the map to find a place." });
+  const dBody = section(el, { title: "Degrees and income", note: "Share of adults with a college degree or more against median family income; colour = internet access. Drag to select; hover the map to find a place." });
   const dCtl = document.createElement("div");
   dCtl.className = "adv-row";
   dBody.appendChild(dCtl);
   let level = "counties";
-  segmented(dCtl, { label: "Places", value: level, options: [{ value: "counties", label: "Counties" }, { value: "metros", label: "Metros" }], onChange: (v) => { level = v; drawDeg(); } });
+  segmented(dCtl, { label: "Places", value: level, options: [{ value: "counties", label: "Provinces" }, { value: "metros", label: "Cities" }], onChange: (v) => { level = v; drawDeg(); } });
   const lv = () => data.levels[level];
   const inc = (r) => (level === "counties" ? r.v.income : r.v.median_income);
   const bbDom = robustDomain(counties.rows.map((r) => r.v.broadband), 0.02) || [0.7, 0.95];
@@ -98,7 +98,7 @@ export function mount(ctx) {
     onBrush: (set) => {
       const sel = set ? lv().rows.filter((r) => set.has(r.key)) : [];
       link.base(sel.length ? rowsHighlight(lv(), sel, { dim: true }) : null, { frame: sel.length > 1 });
-      selInfo.innerHTML = sel.length ? `<b>${int(sel.length)}</b> ${level} · ${count3(sel.reduce((a, r) => a + (r.v.population || 0), 0))} people ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>` : "";
+      selInfo.innerHTML = sel.length ? `<b>${int(sel.length)}</b> ${lv().label.toLowerCase()} · ${count3(sel.reduce((a, r) => a + (r.v.population || 0), 0))} people ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>` : "";
     },
   });
   dBody.insertAdjacentHTML("beforeend", rampLegend({ ramp: RAMPS.seq, domain: bbDom, fmt: (v) => fmtShort("pct", v), label: "Households with broadband" }));
@@ -118,22 +118,22 @@ export function mount(ctx) {
   drawDeg();
 
   // --- broadband ------------------------------------------------------------------------------------------------
-  const bBody = section(el, { title: "Who is offline", note: "Counties by the share of households with any broadband subscription (cable, fibre, DSL, satellite or a cellular data plan). Hover a bar to outline those counties." });
+  const bBody = section(el, { title: "Who is offline", note: "Provinces by internet access / connectivity share. Hover a bar to outline those provinces." });
   const bHost = document.createElement("div");
   bBody.appendChild(bHost);
   const bbHist = histogram(bHost, {
     values: counties.rows.map((r) => ({ key: r.key, v: r.v.broadband })), bins: 30, domain: [0.5, 1], height: 120,
-    fmt: (v) => fmtShort("pct", v), unitLabel: "counties", label: "Histogram of county broadband shares",
+    fmt: (v) => fmtShort("pct", v), unitLabel: "provinces", label: "Histogram of provincial internet access shares",
     colorOf: (_, t) => colorScale({ type: "seq", domain: [0, 1], ramp: RAMPS.seq })(t),
     onHover: (bin) => link.hover(bin ? rowsHighlight(counties, bin.keys.map((k) => counties.byKey.get(k)), { dim: true }) : null),
   });
   createTable(bBody, {
-    caption: "County broadband", rank: true, maxHeight: 240, search: "Search counties",
+    caption: "Provincial internet access", rank: true, maxHeight: 240, search: "Search provinces",
     rows: counties.rows.filter((r) => fin(r.v.broadband)),
     columns: [
-      { key: "name", label: "County", align: "l", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
+      { key: "name", label: "Province", align: "l", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
       { key: "population", label: "People", value: (r) => r.v.population, text: (r) => count3(r.v.population) },
-      { key: "broadband", label: "Broadband", value: (r) => r.v.broadband, text: (r) => pct(r.v.broadband), bar: { max: 1, color: "rgba(74,134,214,.4)" } },
+      { key: "broadband", label: "Internet", value: (r) => r.v.broadband, text: (r) => pct(r.v.broadband), bar: { max: 1, color: "rgba(74,134,214,.4)" } },
       { key: "bachelors", label: "Degrees", value: (r) => r.v.bachelors, text: (r) => pct(r.v.bachelors) },
     ],
     sort: { key: "broadband", dir: "asc" },
@@ -141,12 +141,11 @@ export function mount(ctx) {
     onClick: (r) => counties.focus(r),
   });
 
-  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["acs_1yr", "acs_5yr"], [
-    "Science workers are counted where they live (ACS), not where they work, and cover whole industries (a law firm's receptionist counts; a hospital's researcher does not).",
-    `Degrees and broadband are ${esc(data.countyVintage)} county figures; metro values here are population-weighted roll-ups of their counties.`,
-    "The Science jobs map colours metro and micro areas only (grey hexes are outside them), because the yields come from 1-year ACS data that skip small places.",
-    "Broadband means any paid subscription, including a phone data plan: it measures access at home, not speed.",
-    ...(data.countiesOffMap ? [`${int(data.countiesOffMap)} of the smallest counties are smaller than one hex, so selecting them outlines nothing on the map.`] : []),
+  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["psa_lfs", "psa_digital", "psa_census_2024"], [
+    "Science workers are from the PSA Labor Force Survey and cover professional, scientific, technical, and information sectors.",
+    `Degrees and internet use are from ${esc(data.countyVintage)} and PSA Digital Connectivity data; city values here are population-weighted roll-ups of member provinces.`,
+    "The Science jobs map colours mapped cities only (grey hexes are outside them).",
+    ...(data.countiesOffMap ? [`${int(data.countiesOffMap)} of the smallest provinces are smaller than one hex, so selecting them outlines nothing on the map.`] : []),
   ]));
 
   return {

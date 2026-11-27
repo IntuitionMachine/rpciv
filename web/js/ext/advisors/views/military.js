@@ -17,12 +17,12 @@ const COMP_COLOR = {
 };
 const COMP_SHORT = {
   army: "Army", navy: "Navy", air_force: "Air Force", marines: "Marines", army_reserve: "Army Res.", navy_reserve: "Navy Res.",
-  air_force_reserve: "AF Res.", marine_reserve: "Marine Res.", army_guard: "Army Guard", air_guard: "Air Guard", other: "Other DoD",
+  air_force_reserve: "AF Res.", marine_reserve: "Marine Res.", army_guard: "Army Res.", air_guard: "Air Res.", other: "Other",
 };
 const COMP_GROUPS = [
   { id: "active", label: "Active duty", ids: ["army", "navy", "air_force", "marines"] },
   { id: "reserve", label: "Reserve", ids: ["army_reserve", "navy_reserve", "air_force_reserve", "marine_reserve"] },
-  { id: "guard", label: "National Guard", ids: ["army_guard", "air_guard"] },
+  { id: "guard", label: "Territorial", ids: ["army_guard", "air_guard"] },
   { id: "other", label: "Other", ids: ["other"] },
 ];
 const TIER_LABEL = { major: "Major", base: "Base", site: "Site" };
@@ -35,7 +35,7 @@ export async function mount(ctx) {
   await extendData(data, ["military"]);
   const mil = app.data.military;
   if (!mil) {
-    el.innerHTML = `<p class="adv-empty pad">military.json is not built, so the General has nothing to report.</p>`;
+    el.innerHTML = `<p class="adv-empty pad">Military installation data (military.json) is not included in this build.</p>`;
     return {};
   }
   const { states: stLevel, metros, counties } = data.levels;
@@ -46,7 +46,7 @@ export async function mount(ctx) {
   const nat = mil.national || {};
   const vint = mil.vintage || {};
   const stateIdx = (abbr) => stLevel.byKey.get(abbr)?.ref ?? null;
-  const stateName = (abbr) => stLevel.byKey.get(abbr)?.name || STATE_NAMES[abbr] || abbr;
+  const stateName = (abbr) => stLevel.byKey.get(abbr)?.name || abbr;
   const instCells = (it) => (it.cells && it.cells.length ? it.cells : it.cell != null ? [it.cell] : []);
   // cell → the installation boundaries covering it (largest first), for map → dashboard.
   const cellInst = new Map();
@@ -59,21 +59,21 @@ export async function mount(ctx) {
   // --- headline -------------------------------------------------------------------------------------------------
   const P = nat.personnel || {}, S = nat.spending || {};
   el.insertAdjacentHTML("beforeend", tiles([
-    { label: "Active duty", value: count3(P.active?.total), sub: `+ ${count3(P.guard_reserve?.total)} Guard & Reserve`, color: "#a9c3d6" },
-    { label: "Defense spending", value: money(S.total), sub: `${pct(S.pct_gdp)} of GDP · ${esc(vint.spending || "")}` },
-    { label: "Veterans", value: count3(nat.veterans), sub: "civilians 18+ (ACS)" },
-  ]) + `<p class="adv-callout">No headcount is published for individual bases, so the map sizes them by the land inside their boundary. Troop numbers below are by state.</p>`);
+    { label: "Active duty", value: count3(P.active?.total), sub: `+ ${count3(P.guard_reserve?.total)} Reserve`, color: "#a9c3d6" },
+    { label: "Defense spending", value: money(S.total), sub: `${pct(S.pct_gdp)} of GDP · ${vint.spending || ""}` },
+    { label: "Veterans", value: count3(nat.veterans), sub: "civilians 18+" },
+  ]) + `<p class="adv-callout">No headcount is published for individual bases, so the map sizes them by the land inside their boundary. Troop numbers below are by region.</p>`);
 
   // --- map colour -----------------------------------------------------------------------------------------------
   const mapRow = mk("div", "adv-sec adv-mapsec");
   el.appendChild(mapRow);
   const afLens = () => countyLens(data, "armed_forces_pct", {
     name: "Armed forces residents", emoji: "🎖️", ramp: STEEL_RAMP,
-    description: "Active-duty service members among residents aged 16+, by county, counted where they live (ACS 5-year B23025). Each hex takes the county at its centre.",
+    description: "Active-duty service members among residents aged 16+, by province. Each hex takes the province at its centre.",
   });
   const perResLens = () => stateLens(data, "def-per-resident", (abbr) => mil.states?.[abbr]?.spending?.per_resident ?? null, {
-    name: "Defense $ per resident", emoji: "💵", format: "usd", unit: "$ per resident", ramp: SPEND_RAMP, source: "oldcc_spending",
-    description: `Defense contracts, grants and payroll per resident, by state (${vint.spending || "OLDCC"}). Contracts follow the place of performance.`,
+    name: "Defense ₱ per resident", emoji: "💵", format: "usd", unit: "₱ per resident", ramp: SPEND_RAMP, source: "defense_spending",
+    description: `Defense contracts, grants and payroll per resident, by region (${vint.spending || "Defense data"}).`,
   });
   mapPicker(ctx, mapRow, {
     value: "terrain",
@@ -81,14 +81,14 @@ export async function mount(ctx) {
       { value: "terrain", label: "Terrain", lens: () => null },
       ...(app.lensById?.get("veterans") ? [{ value: "veterans", label: "Veterans", lens: () => "veterans" }] : []),
       ...(counties ? [{ value: "af", label: "Troops at home", lens: afLens }] : []),
-      { value: "dollars", label: "$ per resident", lens: perResLens },
+      { value: "dollars", label: "₱ per resident", lens: perResLens },
     ],
   });
 
   // --- installations --------------------------------------------------------------------------------------------
   const iBody = section(el, {
-    title: "Installations", kicker: esc(vint.installations || "DoD MIRTA"),
-    note: `Every active DoD site in the lower 48: circle area follows the land inside its boundary (capped at ${int(AREA_CAP)} km²; sites without a boundary are dots). ${esc(mil.rules?.tier || "")}`,
+    title: "Installations", kicker: vint.installations || "Defense installations",
+    note: `Active military sites: circle area follows the land inside its boundary (capped at ${int(AREA_CAP)} km²; sites without a boundary are dots). ${esc(mil.rules?.tier || "")}`,
   });
   const counts = new Map();
   for (const it of insts) counts.set(it.component, (counts.get(it.component) || 0) + 1);
@@ -121,13 +121,13 @@ export async function mount(ctx) {
   legend.innerHTML = sizeLegend([100, 1000, AREA_CAP], (v) => 14 * Math.sqrt(v / AREA_CAP), (v) => `${int(v)} km²`, "Circle area = land inside the boundary");
   iBody.appendChild(legend);
   const instTable = createTable(iBody, {
-    caption: "DoD installations", search: "Search installations, states", rank: true, maxHeight: 280,
+    caption: "Military installations", search: "Search installations, regions", rank: true, maxHeight: 280,
     searchText: (r) => `${r.name} ${r.state} ${compById.get(r.component)?.name || ""}`,
     columns: [
       { key: "name", label: "Installation", align: "l", width: "minmax(0,1.9fr)", value: (r) => r.name, html: (r) => `<i class="dot" style="background:${esc(compById.get(r.component)?.color || "#999")}"></i>${esc(r.name)}${r.joint ? ` <span class="sub">joint</span>` : ""}`, tip: (r) => `${r.name} · ${compById.get(r.component)?.name || r.component}${r.status !== "act" ? ` · ${STATUS[r.status] || r.status}` : ""}` },
       { key: "component", label: "Service", align: "l", width: "minmax(0,.9fr)", hideBelow: 400, value: (r) => compById.get(r.component)?.short, text: (r) => compById.get(r.component)?.short || r.component },
       { key: "tier", label: "Tier", align: "l", width: "46px", value: (r) => ({ major: 0, base: 1, site: 2 })[r.tier], text: (r) => TIER_LABEL[r.tier] || r.tier },
-      { key: "state", label: "State", align: "l", width: "40px", value: (r) => r.state, text: (r) => r.state || "–" },
+      { key: "state", label: "Region", align: "l", width: "48px", value: (r) => r.state, text: (r) => r.state || "–" },
       { key: "area", label: "Area", width: "minmax(0,.8fr)", value: (r) => r.area_km2, text: (r) => (fin(r.area_km2) ? `${count3(r.area_km2)} km²` : "–"), title: "Land inside the boundary (null: no boundary published)" },
     ],
     rows: [], sort: { key: "area", dir: "desc" },
@@ -145,17 +145,17 @@ export async function mount(ctx) {
     focusPoint(app, r.x, r.y, Math.min(app.cam.maxScale, Math.max(app.cam.scale, (app.cam.fitScale || 1) * 3)));
   }
 
-  // --- by state -------------------------------------------------------------------------------------------------
+  // --- by region ------------------------------------------------------------------------------------------------
   const sBody = section(el, {
-    title: "Troops and dollars by state",
-    note: `Personnel by duty state (${esc(vint.personnel || "DMDC")}); spending by place of performance (${esc(vint.spending || "OLDCC")}). Click a state to see its detail and filter the bases to it.`,
+    title: "Troops and spending by region",
+    note: `Personnel by region (${esc(vint.personnel || "Defense data")}); spending by region (${esc(vint.spending || "Defense data")}). Click a region to see its detail and filter the bases to it.`,
   });
   const sCtl = mk("div", "adv-row");
   sBody.appendChild(sCtl);
   let metric = "troops", showAll = false;
   segmented(sCtl, {
     label: "Measure", value: metric,
-    options: [{ value: "troops", label: "Troops" }, { value: "dollars", label: "Dollars" }, { value: "perres", label: "Per resident" }, { value: "gdp", label: "% of GDP" }],
+    options: [{ value: "troops", label: "Troops" }, { value: "dollars", label: "Spending" }, { value: "perres", label: "Per resident" }, { value: "gdp", label: "% of GDP" }],
     onChange: (v) => { metric = v; drawStates(); },
   });
   const allBtn = mk("button", "adv-mini");
@@ -171,7 +171,7 @@ export async function mount(ctx) {
   let stacks = null;
   const METRICS = {
     troops: {
-      keys: [{ key: "active", label: "Active duty", color: "#6f91ad" }, { key: "guard", label: "Guard & Reserve", color: "#d6b04a" }, { key: "civ", label: "DoD civilians", color: "#9a9aa8" }],
+      keys: [{ key: "active", label: "Active duty", color: "#6f91ad" }, { key: "guard", label: "Reserve", color: "#d6b04a" }, { key: "civ", label: "Civilians", color: "#9a9aa8" }],
       parts: (s) => ({ active: s.personnel?.active?.total, guard: s.personnel?.guard_reserve?.total, civ: s.personnel?.civilian?.total }),
       total: (s) => s.personnel?.total, fmt: count3,
     },
@@ -180,8 +180,8 @@ export async function mount(ctx) {
       parts: (s) => ({ contracts: s.spending?.contracts, payroll: s.spending?.payroll, grants: s.spending?.grants }),
       total: (s) => s.spending?.total, fmt: money,
     },
-    perres: { keys: [{ key: "v", label: "$ per resident", color: "#d9a457" }], parts: (s) => ({ v: s.spending?.per_resident }), total: (s) => s.spending?.per_resident, fmt: dollars },
-    gdp: { keys: [{ key: "v", label: "Share of state GDP", color: "#c46a4f" }], parts: (s) => ({ v: s.spending?.pct_gdp }), total: (s) => s.spending?.pct_gdp, fmt: (v) => pct(v) },
+    perres: { keys: [{ key: "v", label: "₱ per resident", color: "#d9a457" }], parts: (s) => ({ v: s.spending?.per_resident }), total: (s) => s.spending?.per_resident, fmt: dollars },
+    gdp: { keys: [{ key: "v", label: "Share of regional GDP", color: "#c46a4f" }], parts: (s) => ({ v: s.spending?.pct_gdp }), total: (s) => s.spending?.pct_gdp, fmt: (v) => pct(v) },
   };
   const milStates = Object.entries(mil.states || {}).filter(([, s]) => s);
   function drawStates() {
@@ -194,7 +194,7 @@ export async function mount(ctx) {
     allBtn.textContent = showAll ? "Top 15" : `All ${rows.length}`;
     sHost.innerHTML = "";
     stacks = stackedBars(sHost, {
-      rows: shown, keys: M.keys, fmt: (v) => M.fmt(v), ariaLabel: "Defense by state",
+      rows: shown, keys: M.keys, fmt: (v) => M.fmt(v), ariaLabel: "Defense by region",
       onHover: (x) => {
         if (!x) return link.hover(null);
         const i = stateIdx(x.row.key);
@@ -217,14 +217,14 @@ export async function mount(ctx) {
     detail.innerHTML = `<div class="adv-card-detail">
       <h4 class="adv-h4">${esc(stateName(abbr))}</h4>
       ${tiles([
-        { label: "Active duty", value: p ? int(p.active?.total) : "–", sub: p ? `${int(p.guard_reserve?.total)} Guard & Reserve` : "no DMDC figure" },
-        { label: "Defense $", value: sp ? money(sp.total) : "–", sub: sp ? `${pct(sp.pct_gdp)} of GDP · ${dollars(sp.per_resident)}/resident` : "no OLDCC figure" },
-        { label: "Installations", value: int(nInst), sub: "MIRTA sites filed here" },
+        { label: "Active duty", value: p ? int(p.active?.total) : "–", sub: p ? `${int(p.guard_reserve?.total)} Reserve` : "no personnel figure" },
+        { label: "Defense ₱", value: sp ? money(sp.total) : "–", sub: sp ? `${pct(sp.pct_gdp)} of GDP · ${dollars(sp.per_resident)}/resident` : "no spending figure" },
+        { label: "Installations", value: int(nInst), sub: "sites in this region" },
       ])}
-      ${p ? `<p class="adv-note"><b>Active duty by service:</b> ${branch.filter(([, v]) => fin(v) && v > 0).map(([k, v]) => `${esc(k)} ${int(v)}`).join(" · ")}. DoD civilians: ${int(p.civilian?.total)}.</p>` : ""}
+      ${p ? `<p class="adv-note"><b>Active duty by service:</b> ${branch.filter(([, v]) => fin(v) && v > 0).map(([k, v]) => `${esc(k)} ${int(v)}`).join(" · ")}. Defense civilians: ${int(p.civilian?.total)}.</p>` : ""}
       ${sp ? `<p class="adv-note"><b>Where the money goes:</b> contracts ${money(sp.contracts)}, payroll ${money(sp.payroll)}, grants ${money(sp.grants)}.</p>` : ""}
       ${sp?.top_vendors?.length ? `<p class="adv-note"><b>Top contractors:</b> ${sp.top_vendors.map((v) => `${esc(v.name)} ${money(v.contracts)}`).join(" · ")}</p>` : ""}
-      ${sp?.top_counties?.length ? `<h4 class="adv-h4">Contract dollars by county</h4><div class="adv-chiplist">${sp.top_counties.map((c, i) => `<button type="button" class="adv-mini" data-county="${i}"${c.county ? "" : " disabled title=\"Not a county on the map (old Connecticut counties, Alaska, Hawaii)\""}>${esc(c.name)} <b>${money(c.contracts)}</b></button>`).join("")}</div>` : ""}
+      ${sp?.top_counties?.length ? `<h4 class="adv-h4">Contract spending by province</h4><div class="adv-chiplist">${sp.top_counties.map((c, i) => `<button type="button" class="adv-mini" data-county="${i}"${c.county ? "" : " disabled title=\"Not a province on the map\""}>${esc(c.name)} <b>${money(c.contracts)}</b></button>`).join("")}</div>` : ""}
     </div>`;
     detail.querySelectorAll("[data-county]").forEach((b) => {
       const c = sp.top_counties[+b.dataset.county];
@@ -248,7 +248,7 @@ export async function mount(ctx) {
     columns: [
       { key: "name", label: "Metro", align: "l", width: "minmax(0,1.8fr)", value: (g) => g.row.name, html: (g) => `${esc(g.row.name)} <span class="sub">${esc(g.row.sub)}</span>`, tip: (g) => `${g.row.name}: ${(g.installations || []).map((id) => instByKey.get(id)?.name || id).join(", ")}` },
       { key: "tier", label: "Tier", align: "l", width: "minmax(0,.8fr)", value: (g) => (g.tier === "fortress" ? 0 : 1), text: (g) => `${g.tier === "fortress" ? "Fortress" : "Garrison"}${g.naval ? " ⚓" : ""}` },
-      { key: "af", label: "In uniform", value: (g) => g.armed_forces, text: (g) => count3(g.armed_forces), title: "Armed-forces residents 16+ (ACS 5-year, where they live)" },
+      { key: "af", label: "In uniform", value: (g) => g.armed_forces, text: (g) => count3(g.armed_forces), title: "Armed-forces residents 16+" },
       { key: "share", label: "Share", value: (g) => g.share, text: (g) => pct(g.share), title: "Share of residents 16+ on active duty", bar: { max: Math.max(...garrisons.map((g) => g.share || 0), 0.01), color: "rgba(135,150,171,.35)" } },
     ],
     rows: garrisons, sort: { key: "share", dir: "desc" },
@@ -264,7 +264,7 @@ export async function mount(ctx) {
     caption: "Largest military ranges", rank: true, maxHeight: 240,
     columns: [
       { key: "name", label: "Range", align: "l", width: "minmax(0,2fr)", value: (r) => r.name, html: (r) => `<i class="dot" style="background:${esc(compById.get(r.component)?.color || "#999")}"></i>${esc(r.name)}` },
-      { key: "state", label: "State", align: "l", width: "40px", value: (r) => r.state, text: (r) => r.state || "–" },
+      { key: "state", label: "Region", align: "l", width: "48px", value: (r) => r.state, text: (r) => r.state || "–" },
       { key: "area", label: "Area", width: "minmax(0,.9fr)", value: (r) => r.area_km2, text: (r) => `${count3(r.area_km2)} km²`, bar: { max: Math.max(...ranges.map((r) => r.area_km2 || 0), 1), color: "rgba(194,74,62,.3)" } },
     ],
     rows: ranges, sort: { key: "area", dir: "desc" },
@@ -275,14 +275,14 @@ export async function mount(ctx) {
   // --- veterans -------------------------------------------------------------------------------------------------
   const vBody = section(el, {
     title: "Veterans and troops at home",
-    note: `Civilian veterans 18+ and active-duty residents 16+, counted where they live (${esc(vint.acs || data.countyVintage)}). State and metro shares are summed counts ÷ summed bases of their counties.`,
+    note: `Civilian veterans 18+ and active-duty residents 16+ (${esc(vint.acs || data.countyVintage)}). Regional and city shares are summed counts ÷ summed bases of their provinces.`,
   });
   let vLevel = "states";
   const vCtl = mk("div", "adv-row");
   vBody.appendChild(vCtl);
   segmented(vCtl, {
     label: "Places", value: vLevel,
-    options: [{ value: "states", label: "States" }, { value: "metros", label: "Metros" }, ...(counties ? [{ value: "counties", label: "Counties" }] : [])],
+    options: [{ value: "states", label: "Regions" }, { value: "metros", label: "Cities" }, ...(counties ? [{ value: "counties", label: "Provinces" }] : [])],
     onChange: (v) => { vLevel = v; vTable.setRows(vRows()); },
   });
   const vRows = () => data.levels[vLevel].rows.filter((r) => fin(r.v.veterans_pct) && (vLevel !== "counties" || (r.v.population || 0) >= 10000));
@@ -298,14 +298,11 @@ export async function mount(ctx) {
     onHover: (r) => link.hover(r ? rowsHighlight(data.levels[vLevel], [r]) : null),
     onClick: (r) => data.levels[vLevel].focus(r),
   });
-  vBody.insertAdjacentHTML("beforeend", `<p class="adv-note">Counties of 10,000+ people only (small-county estimates are noisy).</p>`);
+  vBody.insertAdjacentHTML("beforeend", `<p class="adv-note">Provinces of 10,000+ people only.</p>`);
 
-  el.insertAdjacentHTML("beforeend", sourcesHtml(data, mil.sources || ["mirta", "dmdc_personnel", "oldcc_spending", "acs_5yr"], [
+  el.insertAdjacentHTML("beforeend", sourcesHtml(data, mil.sources || [], [
     esc(mil.caveats || ""),
-    `Personnel are ${esc(vint.personnel || "DMDC")}; spending is ${esc(vint.spending || "OLDCC")}, the newest edition published. They are different years.`,
-    "Installation tiers come from boundary area and component, never headcount: a 'major' range can have few people, a small headquarters many.",
-    "MIRTA files a few sites under an odd state (the Utah Test and Training Range is filed as Nevada): the table keeps MIRTA's state; ranges use the state holding most of their hexes.",
-    "Alaska, Hawaii and Puerto Rico are in the state charts but not on the map.",
+    "Installation tiers come from boundary area and component, never headcount.",
   ].filter(Boolean)));
 
   // --- map ------------------------------------------------------------------------------------------------------
@@ -344,7 +341,7 @@ export async function mount(ctx) {
     const i = st.state ? stateIdx(st.state) : null;
     link.base(i != null ? { states: new Set([i]), dimOthers: true } : null);
     stateChip.innerHTML = st.state
-      ? `<span class="adv-fchip">State: <b>${esc(stateName(st.state))}</b> · ${int(vis.length)} sites<button type="button" data-clear-state aria-label="Clear the state filter">✕</button></span>`
+      ? `<span class="adv-fchip">Region: <b>${esc(stateName(st.state))}</b> · ${int(vis.length)} sites<button type="button" data-clear-state aria-label="Clear the region filter">✕</button></span>`
       : "";
   }
   drawStates();
@@ -384,5 +381,4 @@ export async function mount(ctx) {
 }
 
 const STATUS = { act: "Active", semi: "Semi-active", care: "Caretaker status" };
-const STATE_NAMES = { AK: "Alaska", HI: "Hawaii", PR: "Puerto Rico" };
 

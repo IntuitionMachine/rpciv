@@ -51,7 +51,7 @@ export function landBox(app) {
 }
 
 /** Fly so that the km box fills the free map area (with `pad` css px around it). Returns the target scale. */
-export function frameBox(app, box, { pad = 28, maxScale = 2.4, ms = 750 } = {}) {
+export function frameBox(app, box, { pad = 28, maxScale = 6, ms = 750 } = {}) {
   if (!box || !app.fitBounds) return null;
   const a = app.visibleArea?.() || { x0: 0, y0: 0, x1: app.cam.w, y1: app.cam.h };
   const m = mapArea(app);

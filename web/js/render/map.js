@@ -143,16 +143,24 @@ export function drawStatic(ctx, vp, w, opts) {
   upTo(Z.WATER);
 
   // Corners grown by ~0.7px so neighbouring fills overlap (no seams).
+  // At tiny hex sizes (Rpx < 2.5, e.g. 154k-hex national view), fillRect is 5-10x faster and visually identical.
   const grow = (R + 0.7 / s) / R;
   const K = grid.corners.map(([x, y]) => [x * grow, y * grow]);
-  const tile = (i) => {
-    const x = grid.cx(i), y = grid.cy(i);
-    ctx.beginPath();
-    ctx.moveTo(x + K[0][0], y + K[0][1]);
-    for (let k = 1; k < 6; k++) ctx.lineTo(x + K[k][0], y + K[k][1]);
-    ctx.fillStyle = w.colors[i];
-    ctx.fill();
-  };
+  const fastRect = Rpx < 2.5;
+  const rw = grid.W + 1.2 / s, rh = R * 1.55 + 1.2 / s;
+  const tile = fastRect
+    ? (i) => {
+        ctx.fillStyle = w.colors[i];
+        ctx.fillRect(grid.cx(i) - rw / 2, grid.cy(i) - rh / 2, rw, rh);
+      }
+    : (i) => {
+        const x = grid.cx(i), y = grid.cy(i);
+        ctx.beginPath();
+        ctx.moveTo(x + K[0][0], y + K[0][1]);
+        for (let k = 1; k < 6; k++) ctx.lineTo(x + K[k][0], y + K[k][1]);
+        ctx.fillStyle = w.colors[i];
+        ctx.fill();
+      };
 
   // 1. Water tiles, then the water art (texture, per-cell decoration, coast foam).
   for (const i of cells) if (w.water[i]) tile(i);
@@ -352,8 +360,8 @@ export function hexPath(ctx, grid, i, f = 1) {
 
 // --- resources (screen space) --------------------------------------------------------------------------------------
 
-export const RESOURCE_MIN_RPX = 11; // below this only each state's headline sites show (overview mode)
-const RESOURCE_OVERVIEW_MIN_RPX = 2.5; // nothing at all below this
+export const RESOURCE_MIN_RPX = 11; // below this only each region's headline sites show (overview mode)
+const RESOURCE_OVERVIEW_MIN_RPX = 0.6; // nothing at all below this
 const RESOURCE_OVERVIEW_PER_STATE = 2;
 // Slots inside a hex (in R units) for 1, 2 and 3 icons; city cells push them off the skyline.
 const RES_SLOTS = {

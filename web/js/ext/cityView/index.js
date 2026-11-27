@@ -70,7 +70,7 @@ export async function install(app) {
     if (!sec || sec.querySelector(".cv-plink")) return;
     const p = document.createElement("p");
     p.className = "cv-plink";
-    p.innerHTML = `These are residents' industries (ACS). The metro's specialised districts, from jobs counted at employers (BLS QCEW), are in the City View. <button type="button">Districts ›</button>`;
+    p.innerHTML = `These are residents' industries (PSA). The city's specialised districts, derived from provincial &amp; industry accounts, are in the City View. <button type="button">Districts ›</button>`;
     p.querySelector("button").onclick = () => openCityView(city, { section: "districts" });
     sec.appendChild(p);
   }
@@ -217,8 +217,8 @@ export async function install(app) {
       <div class="cv-ml-body" id="cv-ml-body">
         <div class="cv-ml-r"><span class="cv-ml-pill">${icon("pop", "👥", { size: 11 })}≈</span>residents per hex <small>(density × area)</small></div>
         <div class="cv-ml-r"><span class="cv-ml-pill">${icon("l-developed", "▦", { size: 11 })}%</span>main land use</div>
-        <div class="cv-ml-r"><span class="cv-ml-hex" aria-hidden="true"></span>districts: real specialisations <small>(BLS QCEW)</small></div>
-        <p class="cv-ml-n">The districts are real (industries with a high share of the metro's jobs), but their positions are schematic: they are not where the jobs are.</p>
+        <div class="cv-ml-r"><span class="cv-ml-hex" aria-hidden="true"></span>districts: real specialisations <small>(PSA PPA / LFS)</small></div>
+        <p class="cv-ml-n">The districts are real (industries with a high share of the city's economy), but their positions are schematic: they are not where the jobs are.</p>
       </div>`;
     setLegendOpen(legendOpen ?? false);
   }

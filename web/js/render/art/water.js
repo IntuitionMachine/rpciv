@@ -816,8 +816,8 @@ export function drawRivers(ctx, w, { s, Rpx, lod, lens = false }) {
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
-  // Mouth width in css px by rank (1 = biggest), never wider than a good part of a hex.
-  const mouthPx = (rank) => Math.min(Math.max(0.8, (10 - rank) * 0.24 * Math.sqrt(s / 0.25)), Rpx * 0.3);
+  // Mouth width in css px by rank (1 = biggest), capped relative to hex size when zoomed in but never squashed invisible at national zoom.
+  const mouthPx = (rank) => Math.min(Math.max(0.8, (10 - rank) * 0.24 * Math.sqrt(s / 0.25)), Math.max(2.0, Rpx * 0.35));
   const visible = (rv, padKm) =>
     !view || !(rv.bbox[2] < view[0] - padKm || rv.bbox[0] > view[2] + padKm || rv.bbox[3] < view[1] - padKm || rv.bbox[1] > view[3] + padKm);
 

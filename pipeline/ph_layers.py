@@ -60,7 +60,7 @@ def build_resources(world: dict, world_web: dict, cities: list[dict], proj: MapP
             x, y = proj(lon, lat)
             cell = grid.cell_at(x, y)
             if cell < 0 or owner[cell] < 0:
-                cell = nearest_land(grid, owner, max(cell, 0), x, y, -1, max_rings=4)
+                cell = nearest_land(grid, owner, max(cell, 0), x, y, -1, max_rings=12)
             if cell < 0 or owner[cell] < 0:
                 continue
             st_abbr = states_abbr[owner[cell]]
@@ -128,7 +128,7 @@ def build_infrastructure(world: dict, world_web: dict, cities: list[dict], proj:
             pts = [proj(lon, lat) for lon, lat in raw_line]
             prev = -1
             for p, q in zip(pts, pts[1:]):
-                steps = max(1, math.ceil(math.dist(p, q) / 3.0))
+                steps = max(1, math.ceil(math.dist(p, q) / 1.0))
                 for s in range(steps + 1):
                     t = s / steps
                     c = grid.cell_at(p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
@@ -142,7 +142,7 @@ def build_infrastructure(world: dict, world_web: dict, cities: list[dict], proj:
                         prev = -1
     roads = [[a, b, cls, name] for (a, b), (cls, name) in sorted(road_links.items())]
 
-    # 2. Railways from HOT OSM PH railways GeoJSON
+    # 2. Railways from HOT OSM PH railways GeoJSON (densified at 1.0 km steps for 2.5 km hexes)
     rail_links: set[tuple[int, int]] = set()
     with zipfile.ZipFile(PH_RAW / "hdx_railways/hotosm_phl_railways_osm_geojson.zip") as z:
         for fn in z.namelist():
@@ -150,15 +150,19 @@ def build_infrastructure(world: dict, world_web: dict, cities: list[dict], proj:
                 gj = json.loads(z.read(fn))
                 for feat in gj.get("features", []):
                     for raw_line in geojson_lines(feat["geometry"]):
+                        pts = [proj(lon, lat) for lon, lat in raw_line]
                         prev = -1
-                        for lon, lat in raw_line:
-                            c = grid.cell_at(*proj(lon, lat))
-                            if c >= 0 and owner[c] >= 0:
-                                if prev >= 0 and prev != c and c in grid.neighbours(prev):
-                                    rail_links.add((min(prev, c), max(prev, c)))
-                                prev = c
-                            else:
-                                prev = -1
+                        for p, q in zip(pts, pts[1:]):
+                            steps = max(1, math.ceil(math.dist(p, q) / 1.0))
+                            for s in range(steps + 1):
+                                t = s / steps
+                                c = grid.cell_at(p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
+                                if c >= 0 and owner[c] >= 0:
+                                    if prev >= 0 and prev != c and c in grid.neighbours(prev):
+                                        rail_links.add((min(prev, c), max(prev, c)))
+                                    prev = c
+                                else:
+                                    prev = -1
     rail = [[a, b, 0] for a, b in sorted(rail_links)]
 
     # 3. Major Philippine Seaports (curated principal PPA ports with exact coordinates)
@@ -220,7 +224,7 @@ def build_infrastructure(world: dict, world_web: dict, cities: list[dict], proj:
             x, y = proj(lon, lat)
             cell = grid.cell_at(x, y)
             if cell < 0 or owner[cell] < 0:
-                cell = nearest_land(grid, owner, max(cell, 0), x, y, -1, max_rings=3)
+                cell = nearest_land(grid, owner, max(cell, 0), x, y, -1, max_rings=12)
             if cell < 0 or owner[cell] < 0:
                 continue
             hub, enp = HUB_RANK.get(iata, ("N", 150000))
@@ -270,7 +274,7 @@ def build_wonders(world: dict, world_web: dict, cities: list[dict], proj: MapPro
         x, y = proj(lon, lat)
         cell = grid.cell_at(x, y)
         if cell < 0 or owner[cell] < 0:
-            cell = nearest_land(grid, owner, max(cell, 0), x, y, -1, max_rings=6)
+            cell = nearest_land(grid, owner, max(cell, 0), x, y, -1, max_rings=12)
         if cell < 0 or owner[cell] < 0:
             return
         ci = county_arr[cell]
@@ -412,7 +416,7 @@ def build() -> None:
     build_sources()
 
     # Remove stale USA-only optional layers so no US data leaks into the Philippine app
-    for stale in ("military.json", "citizens.json", "districts.json", "trade.json", "disasters.json"):
+    for stale in ("military.json",):
         p = WEB_DATA / stale
         if p.exists():
             p.unlink()

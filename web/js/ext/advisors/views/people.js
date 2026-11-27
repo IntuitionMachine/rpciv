@@ -17,8 +17,8 @@ export function mount(ctx) {
 
   el.insertAdjacentHTML("beforeend", tiles([
     { label: "Residents", value: count3(n.population), sub: data.vintage },
-    { label: `Growth ${yrs.join("–")}`, value: signedPct(n.growth, 2), sub: "Census estimates" },
-    { label: "Metros & micros", value: int(metros.rows.length), sub: counties ? `${int(counties.rows.length)} counties` : "" },
+    { label: `Growth ${yrs.join("–")}`, value: signedPct(n.growth, 2), sub: "PSA Census" },
+    { label: "Cities", value: int(metros.rows.length), sub: counties ? `${int(counties.rows.length)} provinces` : "" },
   ]));
 
   // --- the map: growth by default, so the map tells the same story as the first chart ---------------------------
@@ -37,9 +37,9 @@ export function mount(ctx) {
   });
 
   // --- growth ---------------------------------------------------------------------------------------------------
-  const gBody = section(el, { title: "Who is growing, who is shrinking", note: `Population change ${yrs.join("–")} from one vintage of the Census population estimates, on today's borders. Metros of ${count3(METRO_MIN)}+ people.` });
+  const gBody = section(el, { title: "Who is growing, who is shrinking", note: `Population change ${yrs.join("–")} from PSA Census of Population counts. Cities of ${count3(METRO_MIN)}+ people.` });
   const gHost = document.createElement("div");
-  segmented(gBody, { label: "Areas", value: gLevel, options: [{ value: "metros", label: "Metros" }, { value: "states", label: "States" }], onChange: (v) => { gLevel = v; drawGrowth(); if (picker.value === "growth") picker.refresh(); } });
+  segmented(gBody, { label: "Areas", value: gLevel, options: [{ value: "metros", label: "Cities" }, { value: "states", label: "Regions" }], onChange: (v) => { gLevel = v; drawGrowth(); if (picker.value === "growth") picker.refresh(); } });
   gBody.appendChild(gHost);
   function drawGrowth() {
     gHost.innerHTML = "";
@@ -62,18 +62,18 @@ export function mount(ctx) {
   drawGrowth();
 
   if (!counties) {
-    el.insertAdjacentHTML("beforeend", `<p class="adv-empty pad">counties.json is not built, so the county charts are missing.</p>`);
-    el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["acs_1yr", "pep_population"], []));
+    el.insertAdjacentHTML("beforeend", `<p class="adv-empty pad">counties.json is not built, so the provincial charts are missing.</p>`);
+    el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["psa_census_2024", "psa_census_2020"], []));
     return {};
   }
 
   // --- density --------------------------------------------------------------------------------------------------
-  const dBody = section(el, { title: "How crowded", note: "Counties by residents per km² (log scale). Switch to <i>people</i> to weight each county by its population: most Americans live in the dense tail. Hover a bar to see those counties; click to keep them outlined." });
+  const dBody = section(el, { title: "How crowded", note: "Provinces by residents per km² (log scale). Switch to <i>people</i> to weight each province by its population: most Filipinos live in the dense tail. Hover a bar to see those provinces; click to keep them outlined." });
   const dCtl = document.createElement("div");
   dCtl.className = "adv-row";
   dBody.appendChild(dCtl);
   let weighted = false, pinnedBin = null;
-  segmented(dCtl, { label: "Count", value: "counties", options: [{ value: "counties", label: "Counties" }, { value: "people", label: "People" }], onChange: (v) => { weighted = v === "people"; drawHist(); } });
+  segmented(dCtl, { label: "Count", value: "counties", options: [{ value: "counties", label: "Provinces" }, { value: "people", label: "People" }], onChange: (v) => { weighted = v === "people"; drawHist(); } });
   const dLens = document.createElement("button");
   dLens.type = "button";
   dLens.className = "adv-mini";
@@ -95,16 +95,16 @@ export function mount(ctx) {
     const dom = [0.3, 30000];
     hist = histogram(histHost, {
       values: vals, log: true, bins: 30, domain: dom, weighted, height: 130,
-      fmt: (v) => fmtShort("float", v), unitLabel: "counties", weightFmt: (w) => `${count3(w)} people`,
-      label: "Histogram of county population density",
+      fmt: (v) => fmtShort("float", v), unitLabel: "provinces", weightFmt: (w) => `${count3(w)} people`,
+      label: "Histogram of provincial population density",
       colorOf: (_, t) => colorScale({ type: "seq", domain: [0, 1], ramp: densRamp })(t),
-      markers: [{ v: usDensity, label: "Lower-48 average" }],
+      markers: [{ v: usDensity, label: "National average" }],
       onHover: (bin) => link.hover(bin ? rowsHighlight(counties, bin.keys.map((k) => cByKey.get(k)), { dim: true }) : null),
       onClick: (bin) => {
         pinnedBin = pinnedBin === bin.i ? null : bin.i;
         const rows = pinnedBin != null ? bin.keys.map((k) => cByKey.get(k)) : [];
         link.base(rows.length ? rowsHighlight(counties, rows, { dim: true }) : null, { frame: rows.length > 1 });
-        binInfo.innerHTML = rows.length ? `<b>${int(rows.length)}</b> counties of ${fmtShort("float", bin.x0)}–${fmtShort("float", bin.x1)} people/km² · ${count3(rows.reduce((a, r) => a + (r.v.population || 0), 0))} people ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>` : "";
+        binInfo.innerHTML = rows.length ? `<b>${int(rows.length)}</b> provinces of ${fmtShort("float", bin.x0)}–${fmtShort("float", bin.x1)} people/km² · ${count3(rows.reduce((a, r) => a + (r.v.population || 0), 0))} people ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>` : "";
       },
     });
   }
@@ -112,7 +112,7 @@ export function mount(ctx) {
   drawHist();
 
   // --- age and foreign-born -------------------------------------------------------------------------------------
-  const aBody = section(el, { title: "Age and immigration", note: "Each dot is a county: median age across, share born abroad up, size = population, colour = density. Drag a rectangle to select counties; they light up on the map. Hover the map to find a county here." });
+  const aBody = section(el, { title: "Age and immigration", note: "Each dot is a province: median age across, share born abroad up, size = population, colour = density. Drag a rectangle to select provinces; they light up on the map. Hover the map to find a province here." });
   const aCtl = document.createElement("div");
   aCtl.className = "adv-row";
   aBody.appendChild(aCtl);
@@ -129,7 +129,7 @@ export function mount(ctx) {
     size: { label: "Population", fmt: count3, max: 14, min: 1.4 },
     color: (c) => dColor(c), colorLabel: "Density", colorFmt: (v) => `${fmtValue("float", v)} /km²`,
     labels: big,
-    refX: fin(medianOf(counties.rows, "median_age")) ? [{ v: medianOf(counties.rows, "median_age"), label: "median county" }] : [],
+    refX: fin(medianOf(counties.rows, "median_age")) ? [{ v: medianOf(counties.rows, "median_age"), label: "median province" }] : [],
     onHover: (p) => link.hover(p ? rowsHighlight(counties, [p.row]) : null),
     onClick: (p) => counties.focus(p.row),
     onBrush: (set) => {
@@ -145,16 +145,16 @@ export function mount(ctx) {
   function selSummary(sel) {
     const pop = sel.reduce((a, r) => a + (r.v.population || 0), 0);
     const top = [...sel].sort((a, b) => (b.v.population || 0) - (a.v.population || 0)).slice(0, 5);
-    return `<b>${int(sel.length)}</b> counties · ${count3(pop)} people (${pct(pop / n.population)} of the U.S.)<br><span class="sub">Largest: ${top.map((r) => `${esc(r.name)}, ${esc(r.sub)}`).join(" · ")}</span> ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>`;
+    return `<b>${int(sel.length)}</b> provinces · ${count3(pop)} people (${pct(pop / n.population)} of PH)<br><span class="sub">Largest: ${top.map((r) => `${esc(r.name)}, ${esc(r.sub)}`).join(" · ")}</span> ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>`;
   }
   selInfo.addEventListener("click", (e) => { if (e.target.closest("[data-clear]")) { scatter.setSelected(null); link.base(null); selInfo.innerHTML = ""; } });
 
-  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["acs_1yr", "pep_population", "acs_5yr", "census_gazetteer"], [
-    "The growth map colours metro and micro areas by their own change; grey hexes are outside them. Switch the chart to States to colour every hex by its state.",
-    `Growth uses Census population estimates; the population totals are ${esc(data.vintage)}. They are different estimates and do not divide exactly.`,
-    `County figures are ${esc(data.countyVintage)} averages (five years pooled), so they lag the 1-year metro and state numbers.`,
-    "A county's dot shows its median age; the median of a group of counties is not the average of their medians.",
-    ...(data.countiesOffMap ? [`${int(data.countiesOffMap)} of the smallest counties are smaller than one hex, so selecting them outlines nothing on the map.`] : []),
+  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["psa_census_2024", "psa_census_2020"], [
+    "The growth map colours cities by their own change; grey hexes are outside them. Switch the chart to Regions to colour every hex by its region.",
+    `Growth compares PSA Census of Population counts across census years (${esc(data.vintage)}).`,
+    `Provincial figures are from ${esc(data.countyVintage)}.`,
+    "A province's dot shows its median age; the median of a group of provinces is not the average of their medians.",
+    ...(data.countiesOffMap ? [`${int(data.countiesOffMap)} of the smallest provinces are smaller than one hex, so selecting them outlines nothing on the map.`] : []),
   ]));
 
   return {

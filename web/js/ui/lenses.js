@@ -37,7 +37,7 @@ export function formatLensTick(lens, t, k = -1) {
     && !(lens.format === "int" && lens.unit.startsWith("people")) ? { ...lens, unit: null } : lens;
   let s = formatLensValue(short, v);
   const zero = Number.isFinite(v) && Math.abs(v) < 1e-9;
-  if (zero) s = s.replace(/^(\$?)0\.0+(?!\d)/, (_, d) => d + "0");
+  if (zero) s = s.replace(/^([$₱]?)0\.0+(?!\d)/, (_, d) => d + "0");
   if (k === 0 && !zero) s = "≤ " + s;
   else if (k === 4) s = "≥ " + s;
   return s;

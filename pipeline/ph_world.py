@@ -2,9 +2,11 @@
 
 Uses:
   - GADM 4.1 ADM1 (81 provinces + Metro Manila) grouped into 18 Philippine Regions
-  - Natural Earth v5.1.2 (neighboring countries, lakes, rivers)
-  - NOAA ETOPO1 (lat 4..22, lon 115..128, stride 2 ~3.7 km)
-  - PSA Land Classification (2021) + 2024 Census urbanization for realistic per-hex land cover
+  - GADM 4.1 ADM2 (1,628 municipalities/cities + 19 waterbodies/lakes)
+  - Natural Earth v5.1.2 (1:50m neighboring countries, 1:10m lakes & rivers)
+  - Curated major Philippine river polylines supplementing Natural Earth 1:10m
+  - NOAA ETOPO1 stride=1 (~1.8 km native resolution; falls back to stride=2)
+  - PSA Land Classification (2021) + 2024 Census municipality density & urban share for per-hex land cover
 """
 
 from __future__ import annotations
@@ -13,6 +15,8 @@ import csv
 import json
 import math
 import re
+import time
+import unicodedata
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -35,7 +39,6 @@ from .build.world import (
     OCEAN,
     PEAKS,
     PCT,
-    TIDAL_SEA_SHARE,
     WATER,
     clip_polyline,
     is_valley_floor,
@@ -47,7 +50,7 @@ from .build.world import (
 
 PH_RAW = DATA / "philippines"
 
-HEX_RADIUS_KM = 9.0
+HEX_RADIUS_KM = 2.5
 MARGIN_KM = 80.0
 
 # 18 Philippine Regions (including Negros Island Region established 2024)
@@ -158,12 +161,248 @@ PROVINCE_META: dict[str, tuple[str, str, str]] = {
     "ZamboangadelSur": ("Zamboanga del Sur", "09730", "09"),
 }
 
+# Major Philippine rivers omitted from Natural Earth 1:10m (source -> mouth, (lon, lat))
+# Natural Earth 1:10m already provides Cagayan (187 pts) and Rio Grande de Mindanao / Pulangi (94 pts).
+PH_SUPPLEMENTAL_RIVERS: list[tuple[str, int, list[tuple[float, float]]]] = [
+    # --- Luzon ---
+    (
+        "Pampanga",
+        4,
+        [
+            (121.14, 15.84), (121.08, 15.72), (121.02, 15.60), (120.96, 15.49),
+            (120.89, 15.36), (120.84, 15.25), (120.79, 15.15), (120.82, 15.08),
+            (120.80, 14.99), (120.76, 14.91), (120.72, 14.84), (120.69, 14.77),
+        ],
+    ),
+    (
+        "Agno",
+        5,
+        [
+            (120.82, 16.82), (120.78, 16.65), (120.74, 16.46), (120.70, 16.29),
+            (120.68, 16.14), (120.66, 16.01), (120.63, 15.89), (120.54, 15.83),
+            (120.45, 15.81), (120.36, 15.85), (120.28, 15.94), (120.23, 16.03),
+        ],
+    ),
+    (
+        "Chico",
+        5,
+        [
+            (120.88, 16.92), (120.94, 17.01), (120.98, 17.09), (121.05, 17.18),
+            (121.17, 17.27), (121.31, 17.34), (121.44, 17.41), (121.45, 17.56),
+            (121.45, 17.73), (121.55, 17.82), (121.65, 17.90),
+        ],
+    ),
+    (
+        "Magat",
+        5,
+        [
+            (120.92, 16.36), (121.03, 16.37), (121.11, 16.39), (121.15, 16.48),
+            (121.24, 16.60), (121.35, 16.72), (121.45, 16.82), (121.55, 16.90),
+            (121.67, 16.96), (121.81, 17.02),
+        ],
+    ),
+    (
+        "Abra",
+        5,
+        [
+            (120.73, 16.98), (120.69, 17.07), (120.67, 17.15), (120.66, 17.28),
+            (120.64, 17.43), (120.62, 17.59), (120.53, 17.57), (120.45, 17.54),
+            (120.38, 17.52),
+        ],
+    ),
+    (
+        "Abulog",
+        6,
+        [
+            (121.18, 18.02), (121.24, 18.10), (121.31, 18.17), (121.37, 18.23),
+            (121.42, 18.34), (121.45, 18.45),
+        ],
+    ),
+    (
+        "Angat",
+        6,
+        [
+            (121.24, 14.92), (121.15, 14.91), (121.04, 14.91), (120.95, 14.94),
+            (120.88, 14.93), (120.82, 14.90), (120.76, 14.91),
+        ],
+    ),
+    (
+        "Pasig",
+        5,
+        [
+            (121.11, 14.52), (121.08, 14.55), (121.04, 14.57), (121.00, 14.59),
+            (120.96, 14.59),
+        ],
+    ),
+    (
+        "Bicol",
+        5,
+        [
+            (123.36, 13.34), (123.35, 13.42), (123.29, 13.50), (123.23, 13.57),
+            (123.18, 13.62), (123.14, 13.68), (123.11, 13.73),
+        ],
+    ),
+    # --- Visayas ---
+    (
+        "Panay",
+        5,
+        [
+            (122.40, 11.24), (122.50, 11.27), (122.62, 11.30), (122.69, 11.39),
+            (122.76, 11.46), (122.76, 11.53), (122.75, 11.59),
+        ],
+    ),
+    (
+        "Jalaur",
+        5,
+        [
+            (122.42, 11.14), (122.53, 11.13), (122.64, 11.11), (122.67, 11.00),
+            (122.64, 10.94), (122.67, 10.88), (122.70, 10.82),
+        ],
+    ),
+    (
+        "Ilog-Hilabangan",
+        6,
+        [
+            (122.92, 9.75), (122.89, 9.84), (122.86, 9.92), (122.82, 9.99),
+            (122.74, 10.04),
+        ],
+    ),
+    (
+        "Bago",
+        6,
+        [
+            (123.10, 10.42), (123.03, 10.48), (122.95, 10.52), (122.83, 10.54),
+        ],
+    ),
+    (
+        "Catubig",
+        6,
+        [
+            (125.12, 12.22), (125.07, 12.28), (125.03, 12.34), (125.05, 12.43),
+            (125.01, 12.56),
+        ],
+    ),
+    (
+        "Gandara",
+        6,
+        [
+            (125.02, 12.06), (124.92, 12.04), (124.81, 12.01), (124.72, 11.97),
+        ],
+    ),
+    # --- Mindanao ---
+    (
+        "Agusan",
+        4,
+        [
+            (126.15, 7.55), (126.10, 7.68), (126.05, 7.82), (126.03, 7.98),
+            (126.00, 8.14), (125.92, 8.28), (125.81, 8.41), (125.73, 8.54),
+            (125.64, 8.68), (125.59, 8.78), (125.55, 8.89), (125.53, 8.99),
+        ],
+    ),
+    (
+        "Davao",
+        5,
+        [
+            (125.33, 7.90), (125.34, 7.72), (125.35, 7.52), (125.39, 7.35),
+            (125.46, 7.19), (125.54, 7.11), (125.61, 7.06),
+        ],
+    ),
+    (
+        "Cagayan de Oro",
+        5,
+        [
+            (124.66, 8.14), (124.66, 8.23), (124.67, 8.31), (124.65, 8.40),
+            (124.64, 8.50),
+        ],
+    ),
+    (
+        "Tagoloan",
+        6,
+        [
+            (125.05, 8.28), (124.95, 8.32), (124.86, 8.37), (124.80, 8.45),
+            (124.75, 8.54),
+        ],
+    ),
+    (
+        "Allah",
+        6,
+        [
+            (124.72, 6.22), (124.74, 6.38), (124.68, 6.52), (124.60, 6.66),
+            (124.55, 6.84), (124.51, 7.03),
+        ],
+    ),
+    (
+        "Agus",
+        6,
+        [
+            (124.29, 8.00), (124.24, 8.07), (124.21, 8.14), (124.19, 8.21),
+        ],
+    ),
+]
+
+# Major inland marshlands / peat swamps (lon, lat, radius_deg) for realistic wetland hexes
+PH_MARSHLANDS: list[tuple[float, float, float]] = [
+    (125.84, 8.28, 0.22),   # Agusan Marsh (Agusan del Sur)
+    (124.72, 6.96, 0.22),   # Liguasan Marsh (Maguindanao / Cotabato)
+    (120.84, 15.08, 0.12),  # Candaba Swamp (Pampanga / Bulacan)
+]
+
+# Provinces with notable dry-season savanna / pasture / scrub hills
+PASTURE_PROVINCES = {"bukidnon", "masbate", "occidentalmindoro", "sarangani", "southcotabato"}
+SCRUB_PROVINCES = {"ilocosnorte", "ilocossur", "zambales", "pangasinan", "cebu", "bohol", "siquijor", "negrosoriental"}
+
+PROV_ALIASES = {
+    "mtprovince": "mountainprovince",
+    "compostelavalley": "davaodeoro",
+    "nationalcapitalregion": "metromanila",
+    "ncr": "metromanila",
+    "maguindanaodelnorte": "maguindanao",
+    "maguindanaodelsur": "maguindanao",
+    "davaooccidental": "davaodelsur",
+    "cotabatonorthcotabato": "cotabato",
+    "northcotabato": "cotabato",
+    "westernsamar": "samar",
+}
+
+
+def read_psa_csv(path: Path) -> list[list[str]]:
+    """Read a PSA CSV file handling UTF-8-SIG with CP1252 fallback for ñ/Ñ characters."""
+    raw = path.read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", errors="replace")
+    return list(csv.reader(text.splitlines()))
+
 
 def norm_name(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
     s = re.sub(r"^\.+", "", s.strip())
+    s = re.sub(r"\s+\d+/\s*$", "", s)
     s = re.sub(r"\s*\([^)]*\)", "", s)
     s = re.sub(r"[^a-z0-9]+", "", s.lower())
     return s
+
+
+def norm_muni(s: str) -> str:
+    """Normalize a municipality/city name stripping 'City of ', trailing 'City', and footnotes."""
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r"^\.+", "", s.strip())
+    s = re.sub(r"\s+[a-z]?\d+/\s*", " ", s)
+    s = re.sub(r"\s*\([^)]*\)", "", s)
+    s = re.sub(r"^(city|municipality)\s+of\s+", "", s.strip(), flags=re.IGNORECASE)
+    s = re.sub(r"\s*city$", "", s.strip(), flags=re.IGNORECASE)
+    k = re.sub(r"[^a-z0-9]+", "", s.lower())
+    return k
+
+
+def split_gadm_camel(s: str) -> str:
+    """Insert spaces in GADM2 CamelCase names like 'ButuanCity' -> 'Butuan City'."""
+    s = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", s)
+    s = re.sub(r"\bdel(?=[A-Z])", "del ", s)
+    return s.strip()
 
 
 def classify_relief_ph(mean: float, std: float) -> int:
@@ -177,65 +416,164 @@ def classify_relief_ph(mean: float, std: float) -> int:
     return FLAT
 
 
-def load_psa_land_forest() -> dict[str, float]:
-    """Return normalized province name -> forestland share (0..1) from PSA Land Classification 2021."""
+def load_psa_land_stats() -> tuple[dict[str, float], dict[str, float]]:
+    """Return (forestland_share, fishpond_share) by normalized province name from PSA Land Classification 2021."""
     path = PH_RAW / "psa_land/land_classification_region_province_2021.csv"
-    out: dict[str, float] = {}
+    forest_out: dict[str, float] = {}
+    fishpond_out: dict[str, float] = {}
     if not path.exists():
-        return out
-    with open(path, encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.reader(f)
-        next(reader, None)
-        for row in reader:
-            if len(row) < 4:
-                continue
-            try:
-                total = float(row[1])
-                forest = float(row[3])
-                if total > 0:
-                    out[norm_name(row[0])] = max(0.0, min(1.0, forest / total))
-            except ValueError:
-                continue
-    return out
+        return forest_out, fishpond_out
+    rows = read_psa_csv(path)
+    for row in rows[1:]:
+        if len(row) < 4:
+            continue
+        try:
+            total = float(row[1])
+            forest = float(row[3])
+        except ValueError:
+            continue
+        if total <= 0:
+            continue
+        f_share = max(0.0, min(1.0, forest / total))
+        try:
+            fp_share = max(0.0, min(1.0, float(row[11]) / total)) if len(row) > 11 else 0.0
+        except ValueError:
+            fp_share = 0.0
+        parts = re.split(r"\s+and\s+", row[0].strip(), flags=re.IGNORECASE)
+        for part in parts:
+            k = PROV_ALIASES.get(norm_name(part), norm_name(part))
+            if k:
+                forest_out[k] = f_share
+                fishpond_out[k] = fp_share
+    return forest_out, fishpond_out
 
 
-def load_psa_urban_pct() -> dict[str, float]:
-    """Return normalized province name -> urban share (0..1) from 2024 Census."""
+def load_psa_muni_density() -> tuple[dict[tuple[str, str], tuple[float, float]], dict[str, tuple[float, float]]]:
+    """Return ((prov_key, muni_key) -> (pop_2024, density_2024), muni_key -> (pop, dens)) from PSA 2024."""
+    path = PH_RAW / "psa_census_2024/pop_area_density_2015_2024.csv"
+    by_pm: dict[tuple[str, str], tuple[float, float]] = {}
+    by_m: dict[str, tuple[float, float]] = {}
+    if not path.exists():
+        return by_pm, by_m
+    cur_prov = ""
+    in_ncr = False
+    for row in read_psa_csv(path)[1:]:
+        if len(row) < 8:
+            continue
+        loc = row[0]
+        dots = len(loc) - len(loc.lstrip("."))
+        if dots == 2:
+            in_ncr = "national capital" in loc.lower() or "(ncr)" in loc.lower()
+            cur_prov = "metromanila" if in_ncr else ""
+            continue
+        try:
+            pop = float(row[3])
+            dens = float(row[7])
+        except ValueError:
+            if dots == 4 and not in_ncr:
+                pk = norm_name(loc)
+                cur_prov = PROV_ALIASES.get(pk, pk)
+            continue
+        if dots == 4 and not in_ncr:
+            pk = norm_name(loc)
+            cur_prov = PROV_ALIASES.get(pk, pk)
+            # Some HUCs appear at level 4 (e.g. City of Baguio, City of Cebu)
+            if "city" in loc.lower():
+                mk = norm_muni(loc)
+                if mk:
+                    by_m[mk] = (pop, dens)
+                    if cur_prov:
+                        by_pm[(cur_prov, mk)] = (pop, dens)
+            continue
+        if (dots == 4 and in_ncr) or dots >= 6:
+            mk = norm_muni(loc)
+            if mk:
+                if cur_prov:
+                    by_pm[(cur_prov, mk)] = (pop, dens)
+                by_m.setdefault(mk, (pop, dens))
+    return by_pm, by_m
+
+
+def load_psa_urban_shares() -> tuple[dict[tuple[str, str], float], dict[str, float], dict[str, float]]:
+    """Return (by_(prov, muni), by_muni, by_prov) urban share (0..1) from 2024 Census."""
     path = PH_RAW / "psa_census_2024/urban_pop_2024.csv"
-    out: dict[str, float] = {}
+    by_pm: dict[tuple[str, str], float] = {}
+    by_m: dict[str, float] = {}
+    by_p: dict[str, float] = {}
     if not path.exists():
-        return out
-    with open(path, encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.reader(f)
-        next(reader, None)
-        for row in reader:
-            if len(row) < 4:
-                continue
+        return by_pm, by_m, by_p
+    cur_prov = ""
+    in_ncr = False
+    for row in read_psa_csv(path)[1:]:
+        if len(row) < 4:
+            continue
+        loc = row[0]
+        dots = len(loc) - len(loc.lstrip("."))
+        if dots == 2:
+            in_ncr = "national capital" in loc.lower() or "(ncr)" in loc.lower()
+            cur_prov = "metromanila" if in_ncr else ""
             try:
-                pct = float(row[3])
-                out[norm_name(row[0])] = max(0.0, min(1.0, pct / 100.0))
+                if in_ncr:
+                    by_p["metromanila"] = max(0.0, min(1.0, float(row[3]) / 100.0))
             except ValueError:
-                continue
-    return out
+                pass
+            continue
+        try:
+            share = max(0.0, min(1.0, float(row[3]) / 100.0))
+        except ValueError:
+            if dots == 4 and not in_ncr:
+                pk = norm_name(loc)
+                cur_prov = PROV_ALIASES.get(pk, pk)
+            continue
+        if dots == 4 and not in_ncr:
+            pk = norm_name(loc)
+            pk = PROV_ALIASES.get(pk, pk)
+            if "city" in loc.lower():
+                mk = norm_muni(loc)
+                if mk:
+                    by_m[mk] = share
+                    if cur_prov:
+                        by_pm[(cur_prov, mk)] = share
+            else:
+                cur_prov = pk
+                if pk:
+                    by_p[pk] = share
+        elif (dots == 4 and in_ncr) or dots >= 6:
+            mk = norm_muni(loc)
+            if mk:
+                if cur_prov:
+                    by_pm[(cur_prov, mk)] = share
+                by_m.setdefault(mk, share)
+    return by_pm, by_m, by_p
+
+
+def ring_area_km2(proj: MapProjection, ring: list[tuple[float, float]]) -> float:
+    pts = [proj(lon, lat) for lon, lat in ring]
+    area = 0.0
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+        area += x1 * y2 - x2 * y1
+    return abs(area) / 2.0
 
 
 def build() -> None:
-    print("Building Philippines world.json...")
-    # 1. Load GADM ADM1 provinces
+    t0 = time.perf_counter()
+    print(f"Building Philippines world.json (HEX_RADIUS_KM={HEX_RADIUS_KM:g})...")
+
+    # 1. Load GADM ADM1 provinces (for projection bounds & province/region tables)
     with zipfile.ZipFile(PH_RAW / "gadm_boundaries/gadm41_PHL_1.json.zip") as z:
         gadm1 = json.loads(z.read(z.namelist()[0]))
 
     counties = []
-    region_rings: dict[str, list] = {r["fips"]: [] for r in REGIONS}
     for feat in gadm1["features"]:
         raw_name = feat["properties"]["NAME_1"]
         name, geoid, reg_fips = PROVINCE_META[raw_name]
         rings = geojson_rings(feat["geometry"])
-        counties.append({"geoid": geoid, "name": name, "state_fips": reg_fips, "rings": rings})
-        region_rings[reg_fips].extend(rings)
+        counties.append({"geoid": geoid, "name": name, "state_fips": reg_fips, "raw_name": raw_name, "rings": rings})
     counties.sort(key=lambda c: c["geoid"])
 
-    states = [{**r, "rings": region_rings[r["fips"]]} for r in REGIONS]
+    states = list(REGIONS)
+    state_idx_by_fips = {s["fips"]: idx for idx, s in enumerate(states)}
+    county_idx_by_raw = {c["raw_name"]: idx for idx, c in enumerate(counties)}
 
     # 2. Fit Albers projection to Philippines
     probe = MapProjection(0, 0, 0)
@@ -255,13 +593,59 @@ def build() -> None:
     def make_shape(rings):
         return Shape([[proj(lon, lat) for lon, lat in r] for r in rings])
 
-    state_idx = ShapeIndex([make_shape(s["rings"]) for s in states], cell_km=80)
-    county_idx = ShapeIndex([make_shape(c["rings"]) for c in counties], cell_km=40)
+    # 3. Load GADM ADM2 (1,628 municipalities/cities + 19 waterbodies/lakes)
+    with zipfile.ZipFile(PH_RAW / "gadm_boundaries/gadm41_PHL_2.json.zip") as z:
+        gadm2 = json.loads(z.read(z.namelist()[0]))
 
-    # 3. Natural Earth: neighboring countries, lakes, rivers (filtered near PH bbox)
+    municipalities: list[dict] = []
+    adm2_shapes: list[Shape] = []
+    adm2_county: list[int] = []
+    adm2_state: list[int] = []
+    lake_shapes: list[Shape] = []
+
+    for feat in gadm2["features"]:
+        props = feat["properties"]
+        t2 = props.get("TYPE_2") or ""
+        rings = geojson_rings(feat["geometry"])
+        if not rings:
+            continue
+        if t2 == "Waterbody":
+            area = sum(ring_area_km2(proj, r) for r in rings)
+            if area >= 4.0:
+                lake_shapes.append(make_shape(rings))
+            continue
+        raw_prov = props["NAME_1"]
+        c_idx = county_idx_by_raw[raw_prov]
+        prov_name, _, reg_fips = PROVINCE_META[raw_prov]
+        s_idx = state_idx_by_fips[reg_fips]
+        raw_muni = props.get("NAME_2") or ""
+        municipalities.append(
+            {
+                "gid": props.get("GID_2") or "",
+                "cc": props.get("CC_2") or "",
+                "name": split_gadm_camel(raw_muni),
+                "raw_name": raw_muni,
+                "province": prov_name,
+                "county": c_idx,
+                "state_fips": reg_fips,
+                "type": props.get("ENGTYPE_2") or "",
+            }
+        )
+        adm2_shapes.append(make_shape(rings))
+        adm2_county.append(c_idx)
+        adm2_state.append(s_idx)
+
+    # Fine-grained spatial index (15 km buckets) keeps ~154k hex lookups fast
+    adm2_idx = ShapeIndex(adm2_shapes, cell_km=15)
+
+    # 4. Natural Earth: neighboring countries (per-polygon for fast ocean rejection) & non-PH 1:10m lakes
     def in_ph_window(rings_or_line, is_rings=True):
         pts = [p for r in rings_or_line for p in r] if is_rings else rings_or_line
         return any(112 <= lon <= 130 and 1 <= lat <= 25 for lon, lat in pts)
+
+    def in_core_ph(rings):
+        pts = [p for r in rings for p in r]
+        return any(116.5 <= lon <= 126.8 and 4.5 <= lat <= 21.2 for lon, lat in pts)
 
     ne_dir = PH_RAW / "natural_earth/v5.1.2"
     foreign_shapes = []
@@ -269,26 +653,37 @@ def build() -> None:
         iso = feat["properties"].get("ISO_A3") or feat["properties"].get("ADM0_A3") or ""
         if iso == "PHL":
             continue
-        rings = geojson_rings(feat["geometry"])
-        if in_ph_window(rings, True):
-            foreign_shapes.append(make_shape(rings))
-    foreign_idx = ShapeIndex(foreign_shapes, cell_km=120)
+        geom = feat["geometry"]
+        polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"] if geom["type"] == "MultiPolygon" else []
+        for poly in polys:
+            rings = [[(round(x, 5), round(y, 5)) for x, y, *_ in ring] for ring in poly]
+            if in_ph_window(rings, True):
+                foreign_shapes.append(make_shape(rings))
+    foreign_idx = ShapeIndex(foreign_shapes, cell_km=30)
 
-    lake_shapes = []
-    for feat in json.loads((ne_dir / "ne_50m_lakes.geojson").read_text())["features"]:
+    # Add Natural Earth 1:10m lakes outside core PH (core PH lakes come from higher-res GADM2 Waterbodies
+    # so features like Taal Volcano Island are preserved via polygon holes)
+    lakes_10m = ne_dir / "ne_10m_lakes.geojson"
+    lakes_path = lakes_10m if lakes_10m.exists() else (ne_dir / "ne_50m_lakes.geojson")
+    for feat in json.loads(lakes_path.read_text())["features"]:
         rings = geojson_rings(feat["geometry"])
-        if in_ph_window(rings, True):
+        if in_ph_window(rings, True) and not in_core_ph(rings):
             lake_shapes.append(make_shape(rings))
-    lake_idx = ShapeIndex(lake_shapes, cell_km=40)
+    lake_idx = ShapeIndex(lake_shapes, cell_km=15)
 
-    # 4. ETOPO1 elevation & bathymetry
+    # 5. ETOPO1 elevation & bathymetry (prefer full-resolution stride=1 ~1.8 km)
+    etopo_stride1 = PH_RAW / "etopo/etopo_phl_lat4_22_lon115_128_stride1.csv"
+    etopo_path = etopo_stride1 if etopo_stride1.exists() else (PH_RAW / "etopo/etopo_phl_lat4_22_lon115_128_stride2.csv")
+    etopo_res_label = "~1.8 km stride=1" if etopo_path == etopo_stride1 else "~3.7 km stride=2"
+    print(f"  loading ETOPO1 ({etopo_path.name})...")
+
     stats_all = [[0, 0.0, 0.0] for _ in range(grid.size)]
     stats_land = [[0, 0.0, 0.0] for _ in range(grid.size)]
     samples_land: list[list[float]] = [[] for _ in range(grid.size)]
     below_sea = [0] * grid.size
     below_sum = [0.0] * grid.size
 
-    with open(PH_RAW / "etopo/etopo_phl_lat4_22_lon115_128_stride2.csv", encoding="utf-8") as f:
+    with open(etopo_path, encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)  # header
         next(reader)  # units
@@ -319,70 +714,75 @@ def build() -> None:
         m = s1 / n
         return m, math.sqrt(max(0.0, s2 / n - m * m))
 
-    # 5. Ownership via 7 sample points per hex (for small islands, >= 2/7 or centre on PH land keeps islands crisp)
+    # 6. Single-pass 7-point ownership + county + municipality lookup
     offsets = [(0.0, 0.0)] + [
         (0.6 * HEX_RADIUS_KM * math.cos(math.radians(60 * k - 30)), 0.6 * HEX_RADIUS_KM * math.sin(math.radians(60 * k - 30)))
         for k in range(6)
     ]
     owner = [WATER] * grid.size
     water = [OCEAN] * grid.size
+    county = [-1] * grid.size
+    municipality = [-1] * grid.size
+    county_samples: list[list[int]] = [[] for _ in range(grid.size)]
+
     for i in range(grid.size):
         cx, cy = grid.center(*grid.col_row(i))
         kinds = []
+        muni_hits = []
         for dx, dy in offsets:
             x, y = cx + dx, cy + dy
             if lake_idx.locate(x, y) >= 0:
                 kinds.append("lake")
-            elif (s := state_idx.locate(x, y)) >= 0:
-                kinds.append(s)
+                muni_hits.append(-1)
+            elif (m := adm2_idx.locate(x, y)) >= 0:
+                kinds.append(adm2_state[m])
+                muni_hits.append(m)
             elif foreign_idx.locate(x, y) >= 0:
                 kinds.append(FOREIGN)
+                muni_hits.append(-1)
             else:
                 kinds.append("sea")
+                muni_hits.append(-1)
+
         land = [k for k in kinds if not isinstance(k, str)]
         ph_pts = [k for k in land if k >= 0]
+        n_lake = kinds.count("lake")
         m_all, _ = mean_std(stats_all[i])
-        # Keep narrow Philippine islands visible if >=3 of 7 samples are PH land OR centre is PH land
-        is_ph_island = len(ph_pts) >= 3 or (isinstance(kinds[0], int) and kinds[0] >= 0)
+
+        # Major lakes stay LAKE rather than being swallowed by surrounding land
+        is_lake = (kinds[0] == "lake") or (n_lake >= 3 and kinds[0] != "sea")
+        # Keep small Philippine islands (Boracay, Camiguin, Mactan, Siquijor, Taal Volcano Island, etc.) crisp
+        is_ph_island = (not is_lake) and (len(ph_pts) >= 3 or (isinstance(kinds[0], int) and kinds[0] >= 0))
         tidal = kinds[0] == "sea" and m_all is not None and (m_all <= -5 or sea_share(i) >= 0.7)
-        if (is_ph_island or len(land) * 2 > len(kinds)) and not tidal:
+
+        if not is_lake and (is_ph_island or len(land) * 2 > len(kinds)) and not tidal:
             if ph_pts:
-                owner[i] = majority(ph_pts, kinds[0] if isinstance(kinds[0], int) and kinds[0] >= 0 else ph_pts[0])
+                s_own = majority(ph_pts, kinds[0] if isinstance(kinds[0], int) and kinds[0] >= 0 else ph_pts[0])
+                owner[i] = s_own
+                csmp = [adm2_county[m] if m >= 0 else -1 for m in muni_hits]
+                county_samples[i] = csmp
+                # Choose municipality & county consistent with owner region
+                valid_m = [m for m in muni_hits if m >= 0 and adm2_state[m] == s_own]
+                if not valid_m:
+                    valid_m = [m for m in muni_hits if m >= 0]
+                if valid_m:
+                    m_best = muni_hits[0] if muni_hits[0] in valid_m else Counter(valid_m).most_common(1)[0][0]
+                    municipality[i] = m_best
+                    county[i] = adm2_county[m_best]
             else:
                 owner[i] = FOREIGN
             water[i] = LAND
         else:
             wet = [k for k in kinds if isinstance(k, str)]
             above_sea = m_all is not None and m_all > 0
-            lakeish = "lake" in wet and (above_sea or majority(wet, kinds[0] if kinds[0] in wet else "lake") == "lake")
+            lakeish = is_lake or ("lake" in wet and (above_sea or majority(wet, kinds[0] if kinds[0] in wet else "lake") == "lake"))
             water[i] = LAKE if lakeish else OCEAN
-
-    # 6. Counties (Provinces) for PH cells
-    county = [-1] * grid.size
-    county_samples: list[list[int]] = [[] for _ in range(grid.size)]
-    for i in range(grid.size):
-        if owner[i] >= 0:
-            cx, cy = grid.center(*grid.col_row(i))
-            county_samples[i] = [county_idx.locate(cx + dx, cy + dy) for dx, dy in offsets]
-    for i in range(grid.size):
-        smp = county_samples[i]
-        if smp and max(smp) < 0:
-            nb = [k for j in grid.neighbours(i) if owner[j] == owner[i] for k in county_samples[j] if k >= 0]
-            if nb:
-                smp[0] = Counter(nb).most_common(1)[0][0]
-    county_state = [c["state_fips"] for c in counties]
-    for i, smp in enumerate(county_samples):
-        valid = [k for k in smp if k >= 0]
-        if not valid:
-            continue
-        same = [k for k in valid if county_state[k] == states[owner[i]]["fips"]]
-        pool = same or valid
-        county[i] = smp[0] if smp[0] in pool else Counter(pool).most_common(1)[0][0]
 
     # 7. Elevation, relief, coast/ocean
     elev = [0] * grid.size
     relief = [FLAT] * grid.size
     elev_max = [0] * grid.size
+    elev_std = [0.0] * grid.size
     for i in range(grid.size):
         if water[i] == LAND:
             m, sd = mean_std(stats_land[i])
@@ -392,6 +792,7 @@ def build() -> None:
             if m is None:
                 continue
             elev[i] = round(m)
+            elev_std[i] = sd or 0.0
             relief[i] = classify_relief_ph(max(m, 0.0), sd or 0.0)
             if relief[i] in (HILLS, MOUNTAINS) and is_valley_floor(samples_land[i]):
                 relief[i] -= 1
@@ -409,78 +810,179 @@ def build() -> None:
                 near_land = any(water[j] == LAND for j in grid.neighbours(i))
                 water[i] = COAST if near_land or elev[i] > COAST_DEPTH_M else OCEAN
 
-    # 8. Land cover from PSA provincial forest/urban data + elevation/relief
+    # 8. Land cover from PSA provincial forest/fishpond + PSA 2024 municipality density/urban share + ETOPO1 relief
     # Cover ids: 1 deciduous, 2 evergreen, 3 mixed, 4 scrub, 5 grass, 6 pasture, 7 cropland, 8 wetland, 9 urban
-    forest_by_prov = load_psa_land_forest()
-    urban_by_prov = load_psa_urban_pct()
+    forest_by_prov, fishpond_by_prov = load_psa_land_stats()
+    dens_by_pm, dens_by_m = load_psa_muni_density()
+    urban_by_pm, urban_by_m, urban_by_prov = load_psa_urban_shares()
+
+    # Precompute per-municipality (pop_2024, density_2024, urban_share)
+    muni_stats: list[tuple[float, float, float]] = []
+    for m in municipalities:
+        pk = PROV_ALIASES.get(norm_name(m["province"]), norm_name(m["province"]))
+        mk = norm_muni(m["name"])
+        pop, dens = dens_by_pm.get((pk, mk)) or dens_by_m.get(mk) or (0.0, 0.0)
+        u_sh = urban_by_pm.get((pk, mk))
+        if u_sh is None:
+            u_sh = urban_by_m.get(mk)
+        if u_sh is None:
+            u_sh = urban_by_prov.get(pk, 0.35)
+        muni_stats.append((pop, dens, u_sh))
+
     cover = [0] * grid.size
     pct = {k: [0] * grid.size for k in PCT}
+
     for i in range(grid.size):
         if owner[i] < 0:
             continue
         cidx = county[i]
+        midx = municipality[i]
         pname = norm_name(counties[cidx]["name"]) if cidx >= 0 else ""
         is_ncr = states[owner[i]]["fips"] == "13"
         f_base = forest_by_prov.get(pname, 0.52)
-        u_base = urban_by_prov.get(pname, 0.35)
+        fp_base = fishpond_by_prov.get(pname, 0.0)
+        pop_m, dens_m, u_muni = muni_stats[midx] if midx >= 0 else (0.0, 0.0, urban_by_prov.get(pname, 0.35))
         e = elev[i]
+        sd = elev_std[i]
         rl = relief[i]
+        cx, cy = grid.center(*grid.col_row(i))
+        lon, lat = proj.inverse(cx, cy)
+
+        near_water = any(water[j] in (COAST, LAKE) for j in grid.neighbours(i))
+        in_marsh = any(math.hypot(lon - mlon, lat - mlat) <= mrad for mlon, mlat, mrad in PH_MARSHLANDS)
+
+        # Urban classification grounded in real PSA 2024 municipality density & urban share
+        is_urban = (
+            is_ncr
+            or (dens_m >= 2500 and u_muni >= 0.60 and e < 1600)
+            or (dens_m >= 1500 and u_muni >= 0.80 and e <= 300)
+            or (dens_m >= 1000 and u_muni >= 0.90 and e <= 120)
+        )
+
+        fr = cr = pa = gr = sh = wt = dev = 0
 
         if is_ncr:
-            dev, fr, cr, gr, wt = 78, 6, 4, 8, 4
+            dev = min(88, max(68, round(58 + min(1.0, dens_m / 25000.0) * 30)))
+            rem = 100 - dev
+            fr = round(rem * 0.25)
+            wt = 4 if near_water else 1
+            wt = min(wt, rem - fr)
+            cr = round((rem - fr - wt) * 0.25)
+            gr = max(0, rem - fr - wt - cr)
+            cid = 9  # urban
+        elif is_urban:
+            dev = min(76, max(32, round(28 + min(1.0, dens_m / 8000.0) * 36 + u_muni * 12)))
+            rem = 100 - dev
+            fr = round(rem * min(0.45, f_base * 0.55))
+            wt = 6 if (near_water and e <= 15) else 2
+            wt = min(wt, rem - fr)
+            cr = round((rem - fr - wt) * 0.55)
+            gr = max(0, rem - fr - wt - cr)
             cid = 9  # urban
         elif rl >= MOUNTAINS or e >= 600:
-            fr = min(92, round(60 + f_base * 30))
-            gr = max(4, round((100 - fr) * 0.5))
-            cr = max(0, 100 - fr - gr - 2)
-            dev, wt = 2, 0
-            cid = 2 if e >= 900 else 3  # evergreen pine/montane or tropical mixed forest
-        elif rl == HILLS or e >= 220:
-            fr = min(82, round(35 + f_base * 45))
-            cr = round((100 - fr) * 0.45)
-            gr = round((100 - fr) * 0.35)
-            dev = min(20, round(u_base * 18))
-            wt = max(0, 100 - fr - cr - gr - dev)
-            cid = 1 if fr >= cr else 7  # tropical broadleaf forest vs upland crop
-        else:
-            # Flat lowlands: rice/crop plains, coastal wetlands, or urban centers
-            dev = min(45, round(u_base * 32)) if u_base > 0.65 else min(22, round(u_base * 18))
-            fr = min(55, round(f_base * 45))
-            wt = 14 if (e <= 12 and any(water[j] in (COAST, LAKE) for j in grid.neighbours(i))) else 4
-            rem = max(0, 100 - dev - fr - wt)
-            cr = round(rem * 0.65)
-            gr = rem - cr
-            if dev >= 30:
-                cid = 9  # urban
-            elif cr >= fr and cr >= wt:
-                cid = 7  # cropland (rice/coconut/sugar plains)
-            elif wt >= fr:
-                cid = 8  # coastal wetland / mangrove
+            fr = min(90, round(58 + f_base * 30))
+            sh = max(3, round((100 - fr) * 0.35)) if (pname in SCRUB_PROVINCES or sd >= 240) else 0
+            gr = max(4, round((100 - fr - sh) * 0.45))
+            cr = max(0, 100 - fr - sh - gr - 2)
+            dev = 2
+            cid = 2 if e >= 900 else 3  # evergreen montane/pine vs tropical mixed forest
+        elif in_marsh and e <= 80:
+            wt = 52
+            fr = round(22 * (0.6 + f_base * 0.5))
+            cr = max(8, 100 - wt - fr - 8)
+            gr = max(0, 100 - wt - fr - cr - 3)
+            dev = max(0, 100 - wt - fr - cr - gr)
+            cid = 8  # wetland
+        elif rl == HILLS or e >= 200:
+            if pname in PASTURE_PROVINCES and f_base < 0.62 and e < 550:
+                pa = 36
+                gr = 20
+                fr = min(28, round(f_base * 42))
+                cr = max(6, 100 - pa - gr - fr - 6)
+                dev = max(0, 100 - pa - gr - fr - cr)
+                cid = 6  # pasture
+            elif pname in SCRUB_PROVINCES and f_base < 0.45:
+                sh = 38
+                fr = min(28, round(f_base * 55))
+                cr = round((100 - sh - fr) * 0.45)
+                gr = max(4, 100 - sh - fr - cr - 6)
+                dev = max(0, 100 - sh - fr - cr - gr)
+                cid = 4  # scrub
             else:
-                cid = 1  # tropical forest
+                fr = min(80, round(32 + f_base * 46))
+                dev = min(24, round(u_muni * 16 + min(1.0, dens_m / 2000.0) * 10))
+                rem = max(0, 100 - fr - dev)
+                cr = round(rem * 0.48)
+                gr = round(rem * 0.34)
+                pa = max(0, rem - cr - gr)
+                if fr >= cr and fr >= gr:
+                    cid = 3 if e >= 350 else 1  # mixed vs tropical broadleaf forest
+                elif gr >= cr:
+                    cid = 5  # grassland
+                else:
+                    cid = 7  # upland cropland
+        else:
+            # Flat lowlands: coastal wetlands/mangroves, rice/coconut/sugar plains, or town periphery
+            dev = min(28, round(u_muni * 18 + min(1.0, dens_m / 2000.0) * 12))
+            coastal_wet = near_water and e <= 15 and (fp_base >= 0.008 or (e <= 6 and f_base >= 0.42))
+            if coastal_wet:
+                wt = min(54, round(36 + fp_base * 450))
+                fr = min(28, round(f_base * 34))
+                rem = max(0, 100 - wt - fr - dev)
+                cr = round(rem * 0.65)
+                gr = rem - cr
+                cid = 8  # coastal wetland / mangrove / fishpond belt
+            else:
+                wt = 10 if (near_water and e <= 15) else 3
+                fr = min(52, round(f_base * 44))
+                rem = max(0, 100 - dev - fr - wt)
+                if pname in PASTURE_PROVINCES and f_base < 0.50:
+                    pa = round(rem * 0.45)
+                    cr = round(rem * 0.35)
+                    gr = rem - pa - cr
+                else:
+                    cr = round(rem * 0.68)
+                    gr = round(rem * 0.20)
+                    pa = rem - cr - gr
+                if cr >= fr and cr >= pa and cr >= wt:
+                    cid = 7  # cropland (rice/coconut/sugar plains)
+                elif pa >= fr and pa >= wt:
+                    cid = 6  # pasture
+                elif wt >= fr:
+                    cid = 8  # wetland
+                else:
+                    cid = 1  # tropical broadleaf forest
 
         pct["forest"][i] = fr
         pct["crop"][i] = cr
-        pct["pasture"][i] = gr // 2
-        pct["grass"][i] = gr - gr // 2
-        pct["shrub"][i] = 0
+        pct["pasture"][i] = pa
+        pct["grass"][i] = gr
+        pct["shrub"][i] = sh
         pct["wetland"][i] = wt
         pct["developed"][i] = dev
         cover[i] = cid
 
-    # 9. Rivers from Natural Earth
+    # 9. Rivers from Natural Earth 1:10m + curated major Philippine rivers
     def on_land(pt):
         c = grid.cell_at(*pt)
         return c >= 0 and water[c] == LAND
 
-    by_river: dict[tuple, list] = {}
-    for feat in json.loads((ne_dir / "ne_50m_rivers_lake_centerlines.geojson").read_text())["features"]:
+    by_river: dict[tuple[str, int], list] = {}
+    riv_10m = ne_dir / "ne_10m_rivers_lake_centerlines.geojson"
+    riv_path = riv_10m if riv_10m.exists() else (ne_dir / "ne_50m_rivers_lake_centerlines.geojson")
+    for feat in json.loads(riv_path.read_text())["features"]:
         props = feat["properties"]
-        rank = int(props.get("scalerank") or 6)
+        rank = int(round(float(props.get("scalerank") or 6)))
         name = props.get("name") or ""
         for raw_line in geojson_lines(feat["geometry"]):
             if not in_ph_window(raw_line, False):
                 continue
+            in_core_ph_line = any(116.5 <= lon <= 126.8 and 5.0 <= lat <= 19.5 for lon, lat in raw_line)
+            if in_core_ph_line:
+                if name.lower() == "cagayan":
+                    name, rank = "Cagayan", 4
+                elif not name and any(124.0 <= lon <= 125.6 and 6.8 <= lat <= 8.6 for lon, lat in raw_line):
+                    name, rank = "Rio Grande de Mindanao", 4
             line = [proj(lon, lat) for lon, lat in raw_line]
             if (props.get("featurecla") or "").startswith("Lake Centerline"):
                 parts = [run for p in clip_polyline(line, width, height) for run in land_runs(p, on_land)]
@@ -488,20 +990,25 @@ def build() -> None:
                 parts = clip_polyline(line, width, height)
             by_river.setdefault((name, rank), []).extend(parts)
 
+    for rname, rrank, raw_line in PH_SUPPLEMENTAL_RIVERS:
+        line = [proj(lon, lat) for lon, lat in raw_line]
+        parts = clip_polyline(line, width, height)
+        by_river.setdefault((rname, rrank), []).extend(parts)
+
     rivers = []
     for (name, rank), parts in by_river.items():
         for piece in join_lines(parts):
             if sum(math.dist(a, b) for a, b in zip(piece, piece[1:])) < 1.0:
                 continue
-            pts = simplify(piece, 2.0)
+            pts = simplify(piece, 1.0)
             if len(pts) >= 2:
                 rivers.append({"name": name, "rank": rank, "pts": [round(v, 1) for p in pts for v in p]})
 
     water_table = [
-        {"id": LAND, "name": "Land", "rule": "Philippine archipelago land (GADM 4.1) or neighboring countries (Natural Earth)."},
+        {"id": LAND, "name": "Land", "rule": "Philippine archipelago land (GADM 4.1 ADM2) or neighboring countries (Natural Earth)."},
         {"id": OCEAN, "name": "Ocean", "color": "#1b4266", "rule": "Sea deeper than 200 m and not next to land."},
         {"id": COAST, "name": "Coast", "color": "#2d6d97", "rule": "Sea next to a land hex, or shallower than 200 m (ETOPO1)."},
-        {"id": LAKE, "name": "Lake", "color": "#3a80b0", "rule": "Inland lakes (Laguna de Bay, Lake Lanao, Taal Lake)."},
+        {"id": LAKE, "name": "Lake", "color": "#3a80b0", "rule": "Inland lakes (Laguna de Bay, Lake Lanao, Taal Lake, Lake Mainit, Naujan Lake, Lake Buluan, Bato, Buhi)."},
     ]
     relief_table = [
         {"id": FLAT, "name": "Flat", "rule": "Lowland plains and coastal flats (std < 65 m, mean < 350 m)."},
@@ -518,15 +1025,17 @@ def build() -> None:
         "relief": relief_table,
         "cover": cover_table,
         "notes": {
-            "water": "Philippines archipelago hexes (9 km radius) from GADM 4.1 boundaries and NOAA ETOPO1 bathymetry.",
-            "relief": "From NOAA ETOPO1 (~3.7 km grid) tuned for Philippine mountain ranges.",
-            "cover": "Modelled per hex from PSA Land Classification (2021) provincial forest shares, 2024 Census urbanization, and ETOPO1 relief.",
+            "water": f"Philippines archipelago hexes ({HEX_RADIUS_KM:g} km radius) from GADM 4.1 ADM2 boundaries & waterbodies, Natural Earth 1:10m lakes, and NOAA ETOPO1 bathymetry.",
+            "relief": f"From NOAA ETOPO1 ({etopo_res_label}) tuned for Philippine mountain ranges.",
+            "cover": "Modelled per hex from PSA Land Classification (2021) forest & fishpond shares, 2024 Census municipality density & urbanization (GADM2), marshlands, and ETOPO1 relief.",
         },
     }
 
     ph_hexes = sum(1 for o in owner if o >= 0)
     foreign_hexes = sum(1 for o in owner if o == FOREIGN)
-    print(f"  {ph_hexes} Philippine land hexes, {foreign_hexes} foreign land hexes, {len(rivers)} rivers")
+    lake_hexes = sum(1 for w in water if w == LAKE)
+    elapsed = time.perf_counter() - t0
+    print(f"  {ph_hexes} Philippine land hexes, {foreign_hexes} foreign land hexes, {lake_hexes} lake hexes, {len(rivers)} rivers ({elapsed:.1f}s)")
 
     write_web(
         "world.json",
@@ -558,6 +1067,8 @@ def build() -> None:
             "owner": owner,
             "county": county,
             "county_samples": county_samples,
+            "municipality": municipality,
+            "municipalities": municipalities,
             "states": [s["fips"] for s in states],
             "counties": [c["geoid"] for c in counties],
             "water": water,

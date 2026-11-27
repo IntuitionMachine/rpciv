@@ -37,11 +37,11 @@ export async function mount(ctx) {
   el.appendChild(tileEl);
   const drawTiles = (dis) => {
     tileEl.innerHTML = tiles([
-      { label: "Wonders", value: int(wonders.length), sub: (() => { const byRule = (...ids) => wonders.filter((w) => ids.includes(w.rule)).length; return `${byRule("national_park", "park_unit")} park units · ${byRule("research_university")} universities · ${byRule("landmark")} landmarks`; })() },
-      { label: "Park visits", value: count3(won?.national?.park_visits), sub: `all NPS units, ${won?.national?.park_visits_year || ""}` },
+      { label: "Wonders", value: int(wonders.length), sub: (() => { const byRule = (...ids) => wonders.filter((w) => ids.includes(w.rule)).length; return `${byRule("national_park", "park_unit")} natural · ${byRule("research_university")} universities · ${byRule("landmark")} landmarks`; })() },
+      { label: "Heritage & sites", value: fin(won?.national?.park_visits) ? count3(won.national.park_visits) : int(wonders.length), sub: fin(won?.national?.park_visits) ? `visits, ${won?.national?.park_visits_year || ""}` : "UNESCO & national sites" },
       dis?.noaa?.national
-        ? { label: "$1B+ disasters", value: int(dis.noaa.national.events), sub: `${dis.noaa.years?.join("–") || ""} · ${money(dis.noaa.national.cost_usd)}` }
-        : { label: "Adherents ≈", value: fin(adherents) ? `${adherents.toFixed(0)} / 100` : "–", sub: "residents, 2020 congregations" },
+        ? { label: "Major events", value: int(dis.noaa.national.events), sub: `${dis.noaa.years?.join("–") || ""}${fin(dis.noaa.national.cost_usd) && dis.noaa.national.cost_usd > 0 ? ` · ${money(dis.noaa.national.cost_usd)}` : ""}` }
+        : { label: "Adherents ≈", value: fin(adherents) ? `${adherents.toFixed(0)} / 100` : "–", sub: "residents, PSA Census" },
     ]);
   };
   drawTiles(null);
@@ -117,7 +117,7 @@ export async function mount(ctx) {
   // --- faith ----------------------------------------------------------------------------------------------------
   let faithStates = null;
   if (counties && lensTrad) {
-    const fBody = section(el, { title: "Faith", kicker: "2020 U.S. Religion Census" });
+    const fBody = section(el, { title: "Faith", kicker: "PSA Census of Population" });
     fBody.insertAdjacentHTML("beforeend", `<p class="adv-callout adv-caveat">${esc(lensTrad.note || lensFaith?.note || "")}</p>`);
     const cats = lensTrad.categories || [];
     const catByName = new Map(cats.map((c) => [c.name, c]));
@@ -126,18 +126,18 @@ export async function mount(ctx) {
       const c = catByName.get(r.v.faith_tradition);
       if (c && fin(r.v.population)) popBy.set(c.id, (popBy.get(c.id) || 0) + r.v.population);
     }
-    fBody.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Residents of counties where each tradition is the largest</h4>`);
+    fBody.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Residents of provinces where each tradition is the largest</h4>`);
     const tradRows = (id) => counties.rows.filter((r) => catByName.get(r.v.faith_tradition)?.id === id);
     shareBar(fBody, {
       parts: cats.map((c) => ({ key: c.id, label: c.name, value: popBy.get(c.id) || 0, color: c.color, text: `${count3(popBy.get(c.id) || 0)} people` })),
       onHover: (p) => link.hover(p ? rowsHighlight(counties, tradRows(p.key), { dim: true, label: p.label }) : null),
       onClick: () => picker.set("trad"),
     });
-    fBody.insertAdjacentHTML("beforeend", `<p class="adv-note">"Largest" can be a plurality of a small share of residents. Click to colour the map by tradition.</p>`);
+    fBody.insertAdjacentHTML("beforeend", `<p class="adv-note">"Largest" is the plurality affiliation in each province. Click to colour the map by tradition.</p>`);
     let order = "most";
     const sRow = mk("div", "adv-row");
     fBody.appendChild(sRow);
-    sRow.insertAdjacentHTML("beforeend", `<span class="adv-note" style="margin:0">States by adherents per 100 residents ≈</span>`);
+    sRow.insertAdjacentHTML("beforeend", `<span class="adv-note" style="margin:0">Regions by adherents per 100 residents ≈</span>`);
     segmented(sRow, { label: "Order", value: order, options: [{ value: "most", label: "Most" }, { value: "fewest", label: "Fewest" }], onChange: (v) => { order = v; drawFaith(); } });
     const sHost = mk("div");
     fBody.appendChild(sHost);
@@ -146,58 +146,57 @@ export async function mount(ctx) {
       sHost.innerHTML = "";
       const list = stLevel.rows.filter((r) => fin(r.v.faith)).sort((a, b) => (order === "most" ? b.v.faith - a.v.faith : a.v.faith - b.v.faith)).slice(0, 10);
       faithStates = barList(sHost, {
-        rank: true, compact: true, max: 100, ariaLabel: "States by adherents per 100 residents",
+        rank: true, compact: true, max: 100, ariaLabel: "Regions by adherents per 100 residents",
         rows: list.map((r) => ({ key: r.key, label: r.name, value: Math.min(100, r.v.faith), text: r.v.faith.toFixed(0), color: fColor(r.v.faith) })),
         onHover: (x) => link.hover(x ? rowsHighlight(stLevel, [stLevel.byKey.get(x.key)], { dim: true }) : null),
         onClick: (x) => { picker.set("faith"); stLevel.focus(stLevel.byKey.get(x.key)); },
       });
     }
     drawFaith();
-    fBody.insertAdjacentHTML("beforeend", `<p class="adv-note">State figures are population-weighted means of county rates (≈). Adherents are counted where congregations meet, so a county can pass 100.</p>`);
+    fBody.insertAdjacentHTML("beforeend", `<p class="adv-note">Regional figures are population-weighted means of provincial rates (≈).</p>`);
   }
 
   // --- amenities ------------------------------------------------------------------------------------------------
   let amenHist = null, amenTable = null;
   if (counties && lensAmen) {
-    const aBody = section(el, { title: "Amenities and wellbeing", kicker: "CDC PLACES" });
+    const aBody = section(el, { title: "Amenities and wellbeing", kicker: "Provincial wellbeing index" });
     aBody.insertAdjacentHTML("beforeend", `<p class="adv-callout adv-caveat">${esc(lensAmen.note || "")}</p><p class="adv-note">${esc(lensAmen.description || "")}</p>`);
     const rows = counties.rows.filter((r) => fin(r.v.amenities));
     const aColor = colorScale({ type: "seq", domain: lensAmen.domain || [85, 120], ramp: lensAmen.ramp });
     amenHist = histogram(aBody, {
       values: rows.map((r) => ({ key: r.key, v: r.v.amenities })), bins: 30, domain: lensAmen.domain ? [lensAmen.domain[0] - 10, lensAmen.domain[1] + 10] : undefined,
-      fmt: (v) => v.toFixed(0), unitLabel: "counties", label: "Histogram of county Amenities index",
-      colorOf: (v) => aColor(v), markers: [{ v: 100, label: "average county" }],
+      fmt: (v) => v.toFixed(0), unitLabel: "provinces", label: "Histogram of provincial Amenities index",
+      colorOf: (v) => aColor(v), markers: [{ v: 100, label: "average province" }],
       onHover: (bin) => link.hover(bin ? rowsHighlight(counties, bin.keys.map((k) => counties.byKey.get(k)), { dim: true }) : null),
     });
     amenTable = createTable(aBody, {
-      caption: "Counties by Amenities", rank: true, maxHeight: 240, search: "Search counties",
+      caption: "Provinces by Amenities", rank: true, maxHeight: 240, search: "Search provinces",
       rows: rows.filter((r) => (r.v.population || 0) >= 50000),
       columns: [
-        { key: "name", label: "County", align: "l", width: "minmax(0,1.6fr)", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
+        { key: "name", label: "Province", align: "l", width: "minmax(0,1.6fr)", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
         { key: "amenities", label: "Index", value: (r) => r.v.amenities, text: (r) => r.v.amenities.toFixed(1), bar: { max: 130, color: "rgba(126,207,142,.3)" } },
-        { key: "mhlth", label: "Distress", short: "Mental distress", value: (r) => r.v.mhlth, text: (r) => pct(r.v.mhlth), title: "Adults with 14+ poor mental-health days a month" },
-        { key: "loneliness", label: "Lonely", value: (r) => r.v.loneliness, text: (r) => pct(r.v.loneliness), title: "Adults who feel lonely at least sometimes (not published for some states)", hideBelow: 400 },
+        { key: "mhlth", label: "Distress", short: "Mental distress", value: (r) => r.v.mhlth, text: (r) => pct(r.v.mhlth), title: "Adults with frequent mental distress" },
+        { key: "loneliness", label: "Lonely", value: (r) => r.v.loneliness, text: (r) => pct(r.v.loneliness), title: "Adults who feel lonely at least sometimes", hideBelow: 400 },
       ],
       sort: { key: "amenities", dir: "desc" },
       onHover: (r) => link.hover(r ? rowsHighlight(counties, [r]) : null),
       onClick: (r) => counties.focus(r),
     });
-    aBody.insertAdjacentHTML("beforeend", `<p class="adv-note">Counties of 50,000+ people. Kentucky and Pennsylvania have no PLACES data in this release and are left blank, never filled in.</p>`);
+    aBody.insertAdjacentHTML("beforeend", `<p class="adv-note">Provinces of 50,000+ people.</p>`);
   }
 
   // --- disasters (lazy) -----------------------------------------------------------------------------------------
-  const dSec = section(el, { title: "Disasters", kicker: "FEMA declarations · NOAA billion-dollar events" });
+  const dSec = section(el, { title: "Disasters", kicker: "IBTrACS typhoons · USGS earthquakes" });
   dSec.innerHTML = `<p class="adv-loading">Reading the disaster records…</p>`;
   const srcEl = mk("div");
   el.appendChild(srcEl);
   const drawSources = (dis) => {
-    srcEl.innerHTML = sourcesHtml(data, [...(won?.sources || []), "usrc_2020", "cdc_places", ...(dis?.sources || ["fema_declarations", "noaa_billions"])], [
-      `Faith: ${esc(lensFaith?.note || "counts adherents of congregations where they worship, not residents' beliefs.")}`,
-      `Amenities: ${esc(lensAmen?.note || "model-based estimates, not a happiness survey.")}`,
-      "A FEMA declaration is an administrative act that unlocks federal aid, not a measure of damage; Connecticut's planning regions count a disaster declared for any old county they overlap, which can overstate them.",
-      "NOAA billion-dollar events span several states: a state's cost is its share of the events that touched it, and state figures must not be added up.",
-      "Park visits are counted differently by unit type, so parks are ranked only within their own rule. Landmarks are an editorial choice.",
-      "University R&D includes medical schools; a few universities report together with their medical centre.",
+    srcEl.innerHTML = sourcesHtml(data, [...(won?.sources || ["unesco_heritage"]), "psa_religion", ...(dis?.sources || ["ibtracs_typhoons", "usgs_earthquakes"])], [
+      `Faith: ${esc(lensFaith?.note || "PSA Census of Population religious affiliation.")}`,
+      ...(lensAmen ? [`Amenities: ${esc(lensAmen.note || "composite provincial index.")}`] : []),
+      "Typhoon tracks are from NOAA IBTrACS (Western North Pacific, inside the Philippine Area of Responsibility since 1980).",
+      "Earthquake counts are from the USGS Earthquake Catalog (M5.0+ events in the Philippines since 1980).",
+      "Wonders include UNESCO World Heritage Sites, national landmarks, and major universities.",
     ]);
   };
   drawSources(null);
@@ -214,8 +213,8 @@ export async function mount(ctx) {
   function drawDisasters(D) {
     dSec.innerHTML = "";
     const fema = D.fema || {}, noaa = D.noaa || {};
-    dSec.insertAdjacentHTML("beforeend", `<p class="adv-callout adv-caveat">A declaration is an administrative act that unlocks federal aid, not a measure of damage.</p><p class="adv-note">${esc(fema.rule || "")}</p>`);
-    // County rows by geoid.
+    if (fema.rule) dSec.insertAdjacentHTML("beforeend", `<p class="adv-note">${esc(fema.rule)}</p>`);
+    // Province rows by geoid.
     const cols = fema.counties?.columns || [];
     const ci = Object.fromEntries(cols.map((k, j) => [k, j]));
     const cRows = new Map((fema.counties?.rows || []).map((r) => [r[ci.geoid], r]));
@@ -223,46 +222,46 @@ export async function mount(ctx) {
     const nat = {};
     for (const s of Object.values(fema.states || {})) for (const [k, v] of Object.entries(s.by_type || {})) nat[k] = (nat[k] || 0) + (v || 0);
     const natTotal = Object.values(fema.states || {}).reduce((a, s) => a + (s.total || 0), 0);
-    dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">${int(natTotal)} major-disaster declarations since ${esc((fema.window || [])[0]?.slice(0, 4) || "2000")}, by type (all states and territories)</h4>`);
+    dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">${int(natTotal)} recorded hazard events since ${esc((fema.window || [])[0]?.slice(0, 4) || "1980")}, by type</h4>`);
     const typeCounties = (id) => counties ? counties.rows.filter((r) => { const x = cRows.get(r.key); return x && x[ci[id]] > 0; }) : [];
     shareBar(dSec, {
       parts: types.map((t) => ({ key: t.id, label: t.name, value: nat[t.id] || 0, color: DIS_COLOR[t.id] || "#999", text: int(nat[t.id] || 0) })),
-      onHover: (p) => link.hover(p ? rowsHighlight(counties, typeCounties(p.key), { dim: true, label: `Counties with a ${p.label.toLowerCase()} declaration` }) : null),
+      onHover: (p) => link.hover(p ? rowsHighlight(counties, typeCounties(p.key), { dim: true, label: `Provinces affected by ${p.label.toLowerCase()}` }) : null),
       onClick: () => picker.set("dis"),
     });
 
-    // States: FEMA + NOAA.
+    // Regions.
     const abbrs = [...new Set([...Object.keys(fema.states || {}), ...Object.keys(noaa.states || {})])];
     const sum = (o) => Object.values(o || {}).reduce((a, v) => a + (fin(v) ? v : 0), 0);
     const sRows = abbrs.map((a) => {
       const f = fema.states?.[a], n = noaa.states?.[a], row = stLevel.byKey.get(a);
       return { key: a, name: row?.name || a, row, fema: f?.total ?? null, nEvents: n ? sum(n.count) : null, nCost: n ? sum(n.cost_usd) : null, n };
     });
-    dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">By state</h4>`);
+    dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">By region</h4>`);
     dState = createTable(dSec, {
-      caption: "Disasters by state", rank: true, maxHeight: 240, search: "Search states",
+      caption: "Disasters by region", rank: true, maxHeight: 240, search: "Search regions",
       rows: sRows,
       columns: [
-        { key: "name", label: "State", align: "l", width: "minmax(0,1.4fr)", value: (r) => r.name, html: (r) => `${esc(r.name)}${r.row ? "" : ` <span class="sub">off map</span>`}` },
-        { key: "fema", label: "FEMA", short: "FEMA decl&shy;arations", value: (r) => r.fema, text: (r) => (fin(r.fema) ? int(r.fema) : "–") },
-        { key: "nEvents", label: "$1B+ events", short: "$1B+ events", value: (r) => r.nEvents, text: (r) => (fin(r.nEvents) ? int(r.nEvents) : "–"), title: `NOAA billion-dollar events that touched the state, ${(noaa.years || []).join("–")}` },
-        { key: "nCost", label: "Their cost", short: "Its share of the cost", value: (r) => r.nCost, text: (r) => money(r.nCost), bar: { max: Math.max(...sRows.map((r) => r.nCost || 0), 1), color: "rgba(232,119,74,.3)" }, title: `The state's share of those events' CPI-adjusted cost (${noaa.unit || "USD"})` },
+        { key: "name", label: "Region", align: "l", width: "minmax(0,1.4fr)", value: (r) => r.name, html: (r) => `${esc(r.name)}${r.row ? "" : ` <span class="sub">off map</span>`}` },
+        { key: "fema", label: "Events", short: "Hazard events", value: (r) => r.fema, text: (r) => (fin(r.fema) ? int(r.fema) : "–") },
+        { key: "nEvents", label: "Major", short: "Major events", value: (r) => r.nEvents, text: (r) => (fin(r.nEvents) ? int(r.nEvents) : "–"), title: `Major events that affected the region, ${(noaa.years || []).join("–")}` },
+        { key: "nCost", label: "Impact", short: "Est. impact", value: (r) => r.nCost, text: (r) => money(r.nCost), bar: { max: Math.max(...sRows.map((r) => r.nCost || 0), 1), color: "rgba(232,119,74,.3)" }, title: `Estimated impact (${noaa.unit || "PHP"})` },
       ],
-      sort: { key: "nCost", dir: "desc" },
+      sort: { key: "fema", dir: "desc" },
       onHover: (r) => link.hover(r?.row ? rowsHighlight(stLevel, [r.row], { dim: true }) : null),
       onClick: (r) => { if (r.row) stLevel.focus(r.row); },
     });
-    dSec.insertAdjacentHTML("beforeend", `<p class="adv-note">${esc(noaa.rule || "")}${noaa.final ? " NOAA's final release: the series is no longer updated." : ""}</p>`);
+    if (noaa.rule) dSec.insertAdjacentHTML("beforeend", `<p class="adv-note">${esc(noaa.rule)}</p>`);
 
-    // Counties with the most declarations.
+    // Provinces with the most hazard events.
     if (counties) {
-      dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Most-declared counties</h4>`);
+      dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Most-affected provinces</h4>`);
       const rows = counties.rows.filter((r) => cRows.has(r.key)).map((r) => ({ ...r, dx: cRows.get(r.key) }));
       dCounty = createTable(dSec, {
-        caption: "Counties by disaster declarations", rank: true, maxHeight: 240, search: "Search counties", rows,
+        caption: "Provinces by hazard events", rank: true, maxHeight: 240, search: "Search provinces", rows,
         columns: [
-          { key: "name", label: "County", align: "l", width: "minmax(0,1.6fr)", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
-          { key: "total", label: "Declared", value: (r) => r.dx[ci.total], text: (r) => int(r.dx[ci.total]), bar: { max: Math.max(...rows.map((r) => r.dx[ci.total] || 0), 1), color: "rgba(207,106,74,.3)" } },
+          { key: "name", label: "Province", align: "l", width: "minmax(0,1.6fr)", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
+          { key: "total", label: "Events", value: (r) => r.dx[ci.total], text: (r) => int(r.dx[ci.total]), bar: { max: Math.max(...rows.map((r) => r.dx[ci.total] || 0), 1), color: "rgba(207,106,74,.3)" } },
           { key: "top", label: "Mostly", align: "l", width: "minmax(0,1fr)", hideBelow: 380, value: (r) => topType(r.dx), text: (r) => types.find((t) => t.id === topType(r.dx))?.name.split(/[ ,&]/)[0] || "–" },
           { key: "last", label: "Last", align: "l", width: "78px", value: (r) => r.dx[ci.last_date], text: (r) => r.dx[ci.last_date] || "–" },
         ],
@@ -277,18 +276,18 @@ export async function mount(ctx) {
       }
     }
 
-    // The last 12 months.
+    // Recent events.
     const recent = fema.recent || [];
     if (recent.length) {
-      dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Declared in the last ${Math.round((fema.recent_days || 365) / 30)} months (to ${esc(fema.as_of || "")})</h4>`);
+      dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Recent events (last ${Math.round((fema.recent_days || 365) / 30)} months to ${esc(fema.as_of || "")})</h4>`);
       createTable(dSec, {
-        caption: "Recent declarations", maxHeight: 220, rowKey: (r) => r.disaster,
+        caption: "Recent hazard events", maxHeight: 220, rowKey: (r) => r.disaster,
         rows: recent,
         columns: [
           { key: "date", label: "Date", align: "l", width: "78px", value: (r) => r.date, text: (r) => r.date },
-          { key: "state", label: "State", align: "l", width: "38px", value: (r) => r.state, text: (r) => r.state },
-          { key: "type", label: "What", align: "l", width: "minmax(0,1.6fr)", value: (r) => r.title, html: (r) => `<i class="dot" style="background:${DIS_COLOR[r.type] || "#999"}"></i>${esc(titleCase(r.title))}`, tip: (r) => `DR-${r.disaster}: ${r.incident_type} · ${titleCase(r.title)}` },
-          { key: "areas", label: "Areas", value: (r) => r.areas, text: (r) => (r.statewide ? "statewide" : int(r.areas)), title: "FEMA's designated areas (counties and tribal areas, including ones off the map)" },
+          { key: "state", label: "Region", align: "l", width: "48px", value: (r) => r.state, text: (r) => r.state },
+          { key: "type", label: "What", align: "l", width: "minmax(0,1.6fr)", value: (r) => r.title, html: (r) => `<i class="dot" style="background:${DIS_COLOR[r.type] || "#999"}"></i>${esc(titleCase(r.title))}`, tip: (r) => `${r.incident_type}: ${titleCase(r.title)}` },
+          { key: "areas", label: "Areas", value: (r) => r.areas, text: (r) => (r.statewide ? "regionwide" : int(r.areas)), title: "Affected provinces" },
         ],
         sort: { key: "date", dir: "desc" },
         onHover: (r) => {
@@ -305,14 +304,14 @@ export async function mount(ctx) {
       });
     }
 
-    // NOAA by year and the costliest events.
+    // Major events by year and most severe events.
     const years = noaa.national?.by_year || [];
     if (years.length) {
-      dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Billion-dollar disasters per year, ${(noaa.years || []).join("–")} (NOAA, ${esc(noaa.unit || "CPI-adjusted")})</h4>`);
-      dSec.appendChild(columnChart(years, (y) => y.events, (y) => `${y.year}: ${y.events} events, ${money(y.cost_usd)}`));
+      dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Major events per year, ${(noaa.years || []).join("–")}</h4>`);
+      dSec.appendChild(columnChart(years, (y) => y.events, (y) => `${y.year}: ${y.events} events${fin(y.cost_usd) && y.cost_usd > 0 ? `, ${money(y.cost_usd)}` : ""}`));
       const worst = noaa.national?.costliest || [];
       if (worst.length) {
-        dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">The costliest</h4><ol class="adv-olist">${worst.map((e) => `<li><b>${esc(e.name)}</b> <span class="sub">${money(e.cost_usd)}${fin(e.deaths) ? ` · ${int(e.deaths)} deaths` : ""}</span></li>`).join("")}</ol>`);
+        dSec.insertAdjacentHTML("beforeend", `<h4 class="adv-h4">Most severe events</h4><ol class="adv-olist">${worst.map((e) => `<li><b>${esc(e.name)}</b> <span class="sub">${fin(e.cost_usd) && e.cost_usd > 0 ? money(e.cost_usd) : ""}${fin(e.deaths) ? `${fin(e.cost_usd) && e.cost_usd > 0 ? " · " : ""}${int(e.deaths)} deaths` : ""}</span></li>`).join("")}</ol>`);
       }
     }
   }

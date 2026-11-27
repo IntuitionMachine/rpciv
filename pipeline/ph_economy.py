@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import re
+import unicodedata
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -16,7 +17,7 @@ from .core.geo import MapProjection, geojson_rings
 from .core.hexgrid import HexGrid
 from .core.paths import DATA
 from .core.store import load_interim, write_web
-from .ph_world import PROVINCE_META, REGIONS, norm_name
+from .ph_world import PROVINCE_META, REGIONS
 
 PH_RAW = DATA / "philippines"
 
@@ -88,6 +89,24 @@ REGION_ALIASES = {
 }
 
 
+def read_psa_csv(path: Path) -> list[list[str]]:
+    """Read a PSA OpenSTAT CSV, decoding UTF-8-SIG or falling back to CP1252 (for ñ/Ñ)."""
+    raw = path.read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252")
+    return list(csv.reader(text.splitlines()))
+
+
+def norm_name(s: str) -> str:
+    """Fold diacritics (ñ -> n), strip parentheticals & punctuation, lowercase."""
+    s = re.sub(r"^\.+", "", s.strip())
+    s = re.sub(r"\s*\([^)]*\)", "", s)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", s.lower())
+
+
 def parse_num(v: str | None) -> float | None:
     if v is None:
         return None
@@ -103,16 +122,22 @@ def parse_num(v: str | None) -> float | None:
 
 def clean_geo(s: str) -> str:
     s = re.sub(r"^\.+", "", s.strip())
-    s = re.sub(r"\s+(r1|a|a/|1/|2/|3/|,?\s*\d+/)[\s,\d/a-z]*$", "", s, flags=re.I)
-    s = re.sub(r"\s*\(excluding[^)]*\)", "", s, flags=re.I)
+    # Strip "(excluding ...)" or "(w/o ...)" including occasional unclosed parens in PSA CSVs
+    s = re.sub(r"\s*\((?:excluding|w/o)[^)]*\)?", "", s, flags=re.I)
+    # Strip trailing PSA footnote markers like "r1", "1/", "2/", "a/", "b/", "c/"
+    s = re.sub(r"(?:[\s,]+(?:r\d+|\d+/|[a-z]/))+$", "", s, flags=re.I)
     return s.strip()
+
+
+# Longest aliases checked first so "regionii" / "regionxiii" never match "regioni" / "regionx"
+_REGION_ALIASES_BY_LEN = sorted(REGION_ALIASES.items(), key=lambda kv: -len(kv[0]))
 
 
 def match_region(raw: str) -> str | None:
     k = norm_name(clean_geo(raw))
     if k in REGION_ALIASES:
         return REGION_ALIASES[k]
-    for alias, fips in REGION_ALIASES.items():
+    for alias, fips in _REGION_ALIASES_BY_LEN:
         if alias in k and len(alias) >= 6:
             return fips
     return None
@@ -122,44 +147,35 @@ def load_census_2024() -> tuple[dict, dict, dict]:
     """Return (by_norm_name -> {pop, hh, hh_size}, growth_by_norm -> {p2010,p2015,p2020,p2024}, area_by_norm -> km2)."""
     pop_map, growth_map, area_map = {}, {}, {}
 
-    with open(PH_RAW / "psa_census_2024/pop_region_province_huc_2024.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) < 5:
-                continue
-            p = parse_num(row[1])
-            if p:
-                pop_map[norm_name(clean_geo(row[0]))] = {
-                    "pop": int(round(p)),
-                    "hh": int(round(parse_num(row[3]) or 0)),
-                    "raw": clean_geo(row[0]),
-                }
+    for row in read_psa_csv(PH_RAW / "psa_census_2024/pop_region_province_huc_2024.csv")[1:]:
+        if len(row) < 5:
+            continue
+        p = parse_num(row[1])
+        if p:
+            pop_map[norm_name(clean_geo(row[0]))] = {
+                "pop": int(round(p)),
+                "hh": int(round(parse_num(row[3]) or 0)),
+                "raw": clean_geo(row[0]),
+            }
 
-    with open(PH_RAW / "psa_census_2024/pop_growth_2010_2024.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) < 5:
-                continue
-            p2010, p2015, p2020, p2024 = [parse_num(row[i]) for i in (1, 2, 3, 4)]
-            if p2024:
-                growth_map[norm_name(clean_geo(row[0]))] = {
-                    "2010": int(round(p2010)) if p2010 else None,
-                    "2015": int(round(p2015)) if p2015 else None,
-                    "2020": int(round(p2020)) if p2020 else None,
-                    "2024": int(round(p2024)),
-                }
+    for row in read_psa_csv(PH_RAW / "psa_census_2024/pop_growth_2010_2024.csv")[1:]:
+        if len(row) < 5:
+            continue
+        p2010, p2015, p2020, p2024 = [parse_num(row[i]) for i in (1, 2, 3, 4)]
+        if p2024:
+            growth_map[norm_name(clean_geo(row[0]))] = {
+                "2010": int(round(p2010)) if p2010 else None,
+                "2015": int(round(p2015)) if p2015 else None,
+                "2020": int(round(p2020)) if p2020 else None,
+                "2024": int(round(p2024)),
+            }
 
-    with open(PH_RAW / "psa_census_2024/pop_area_density_2015_2024.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) < 5:
-                continue
-            area = parse_num(row[4])
-            if area and area > 0:
-                area_map[norm_name(clean_geo(row[0]))] = area
+    for row in read_psa_csv(PH_RAW / "psa_census_2024/pop_area_density_2015_2024.csv")[1:]:
+        if len(row) < 5:
+            continue
+        area = parse_num(row[4])
+        if area and area > 0:
+            area_map[norm_name(clean_geo(row[0]))] = area
 
     return pop_map, growth_map, area_map
 
@@ -168,129 +184,221 @@ def load_grdp() -> tuple[dict, dict]:
     """Return (nation_dict, region_fips -> {total, agriculture, industry, services}) in PHP (2024 current prices)."""
     nation = {}
     by_reg = {}
-    with open(PH_RAW / "psa_gdp_grdp/grdp_current_by_region_industry_2018_2025.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        hdr = next(r)
-        col = {h.strip(): i for i, h in enumerate(hdr)}
-        # Use 2024 to align with 2024 Census year
-        c_tot = col.get("Total 2024")
-        c_ag = col.get("Agriculture, Forestry, and Fishing 2024")
-        c_in = col.get("Industry 2024")
-        c_sv = col.get("Services 2024")
-        for row in r:
-            if not row:
-                continue
-            raw = clean_geo(row[0])
-            tot = parse_num(row[c_tot]) if c_tot is not None and c_tot < len(row) else None
-            if tot is None:
-                continue
-            rec = {
-                "total": round(tot * 1000.0),  # PSA GRDP is in thousand PHP
-                "agriculture": round((parse_num(row[c_ag]) or 0) * 1000.0),
-                "industry": round((parse_num(row[c_in]) or 0) * 1000.0),
-                "services": round((parse_num(row[c_sv]) or 0) * 1000.0),
-            }
-            if norm_name(raw) == "philippines":
-                nation = rec
-            else:
-                fips = match_region(raw)
-                if fips:
-                    by_reg[fips] = rec
+    rows = read_psa_csv(PH_RAW / "psa_gdp_grdp/grdp_current_by_region_industry_2018_2025.csv")
+    hdr = rows[0]
+    col = {h.strip(): i for i, h in enumerate(hdr)}
+    # Use 2024 to align with 2024 Census year
+    c_tot = col.get("Total 2024")
+    c_ag = col.get("Agriculture, Forestry, and Fishing 2024")
+    c_in = col.get("Industry 2024")
+    c_sv = col.get("Services 2024")
+    for row in rows[1:]:
+        if not row:
+            continue
+        raw = clean_geo(row[0])
+        tot = parse_num(row[c_tot]) if c_tot is not None and c_tot < len(row) else None
+        if tot is None:
+            continue
+        rec = {
+            "total": round(tot * 1000.0),  # PSA GRDP is in thousand PHP
+            "agriculture": round((parse_num(row[c_ag]) or 0) * 1000.0),
+            "industry": round((parse_num(row[c_in]) or 0) * 1000.0),
+            "services": round((parse_num(row[c_sv]) or 0) * 1000.0),
+        }
+        if norm_name(raw) == "philippines":
+            nation = rec
+        else:
+            fips = match_region(raw)
+            if fips:
+                by_reg[fips] = rec
     return nation, by_reg
 
 
 def load_ppa() -> dict[str, dict]:
     """Return norm_name -> {total, agriculture, industry, services} in PHP (2024 current prices)."""
     out: dict[str, dict] = {}
-    with open(PH_RAW / "psa_gdp_ppa/gdp_by_province_huc.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        hdr = next(r)
-        c2024 = next((i for i, h in enumerate(hdr) if "Current Prices 2024" in h), None)
-        for row in r:
-            if not row or c2024 is None or c2024 >= len(row):
-                continue
-            v = parse_num(row[c2024])
-            if v is not None:
-                k = norm_name(clean_geo(row[0]))
-                out[k] = {"total": round(v * 1000.0)}
+    rows = read_psa_csv(PH_RAW / "psa_gdp_ppa/gdp_by_province_huc.csv")
+    hdr = rows[0]
+    c2024 = next((i for i, h in enumerate(hdr) if "Current Prices 2024" in h), None)
+    for row in rows[1:]:
+        if not row or c2024 is None or c2024 >= len(row):
+            continue
+        v = parse_num(row[c2024])
+        if v is not None:
+            k = norm_name(clean_geo(row[0]))
+            out[k] = {"total": round(v * 1000.0)}
 
-    with open(PH_RAW / "psa_gdp_ppa/gdp_by_industry_province_huc.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        hdr = next(r)
-        c2024 = next((i for i, h in enumerate(hdr) if "Current Prices 2024" in h), None)
-        for row in r:
-            if len(row) < 3 or c2024 is None or c2024 >= len(row):
-                continue
-            sec = row[0].strip().lower()
-            k = norm_name(clean_geo(row[1]))
-            v = parse_num(row[c2024])
-            if v is None or k not in out:
-                continue
-            if "agriculture" in sec:
-                out[k]["agriculture"] = round(v * 1000.0)
-            elif sec == "industry":
-                out[k]["industry"] = round(v * 1000.0)
-            elif sec == "services":
-                out[k]["services"] = round(v * 1000.0)
+    rows = read_psa_csv(PH_RAW / "psa_gdp_ppa/gdp_by_industry_province_huc.csv")
+    hdr = rows[0]
+    c2024 = next((i for i, h in enumerate(hdr) if "Current Prices 2024" in h), None)
+    for row in rows[1:]:
+        if len(row) < 3 or c2024 is None or c2024 >= len(row):
+            continue
+        sec = row[0].strip().lower()
+        k = norm_name(clean_geo(row[1]))
+        v = parse_num(row[c2024])
+        if v is None or k not in out:
+            continue
+        if "agriculture" in sec:
+            out[k]["agriculture"] = round(v * 1000.0)
+        elif sec in ("mining and quarrying", "manufacturing", "electricity, steam, water and waste management", "construction"):
+            out[k]["industry"] = out[k].get("industry", 0) + round(v * 1000.0)
+        else:
+            out[k]["services"] = out[k].get("services", 0) + round(v * 1000.0)
     return out
 
 
 def load_fies_and_poverty() -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
     """Return (median_income_php, poverty_pct_0_1, internet_by_region_0_1)."""
     inc: dict[str, float] = {}
-    with open(PH_RAW / "psa_fies_2023/median_family_income_expenditure_2023.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) >= 3 and "all income" in row[1].lower():
-                v = parse_num(row[2])
-                if v is not None:
-                    inc[norm_name(clean_geo(row[0]))] = round(v * 1000.0)
+    for row in read_psa_csv(PH_RAW / "psa_fies_2023/median_family_income_expenditure_2023.csv")[1:]:
+        if len(row) >= 3 and "all income" in row[1].lower():
+            v = parse_num(row[2])
+            if v is not None:
+                inc[norm_name(clean_geo(row[0]))] = round(v * 1000.0)
 
     pov: dict[str, float] = {}
-    with open(PH_RAW / "psa_poverty/poverty_population_region_province_huc.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        hdr = next(r)
-        c2023 = next((i for i, h in enumerate(hdr) if "Poverty Incidence among Population (%) 2023" in h), None)
-        for row in r:
-            if not row or c2023 is None or c2023 >= len(row):
-                continue
-            v = parse_num(row[c2023])
-            if v is not None:
-                pov[norm_name(clean_geo(row[0]))] = round(max(0.0, min(1.0, v / 100.0)), 4)
+    rows = read_psa_csv(PH_RAW / "psa_poverty/poverty_population_region_province_huc.csv")
+    hdr = rows[0]
+    c2023 = next((i for i, h in enumerate(hdr) if "Poverty Incidence among Population (%) 2023" in h), None)
+    for row in rows[1:]:
+        if not row or c2023 is None or c2023 >= len(row):
+            continue
+        v = parse_num(row[c2023])
+        if v is not None:
+            k = norm_name(clean_geo(row[0]))
+            val = round(max(0.0, min(1.0, v / 100.0)), 4)
+            pov[k] = val
+            if k == "mtprovince":
+                pov["mountainprovince"] = val
 
     inet: dict[str, float] = {}
-    with open(PH_RAW / "psa_digital/internet_use_by_region_2024.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) >= 3:
-                v = parse_num(row[2])
-                if v is not None:
-                    fips = match_region(row[0])
-                    if fips:
-                        inet[fips] = round(v / 100.0, 4)
-                    elif norm_name(row[0]) == "philippines":
-                        inet["PH"] = round(v / 100.0, 4)
+    for row in read_psa_csv(PH_RAW / "psa_digital/internet_use_by_region_2024.csv")[1:]:
+        if len(row) >= 3:
+            v = parse_num(row[2])
+            if v is not None:
+                fips = match_region(row[0])
+                if fips:
+                    inet[fips] = round(v / 100.0, 4)
+                elif norm_name(row[0]) == "philippines":
+                    inet["PH"] = round(v / 100.0, 4)
+    # Negros Island Region (18) was re-established in 2024 from Region VI (06) & Region VII (07)
+    if "18" not in inet and "06" in inet and "07" in inet:
+        inet["18"] = round((inet["06"] + inet["07"]) / 2.0, 4)
 
     return inc, pov, inet
 
 
 def load_urban_by_norm() -> dict[str, float]:
     out: dict[str, float] = {}
-    with open(PH_RAW / "psa_census_2024/urban_pop_2024.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) >= 4:
-                v = parse_num(row[3])
-                if v is not None:
-                    out[norm_name(clean_geo(row[0]))] = round(max(0.0, min(1.0, v / 100.0)), 4)
+    for row in read_psa_csv(PH_RAW / "psa_census_2024/urban_pop_2024.csv")[1:]:
+        if len(row) >= 4:
+            v = parse_num(row[3])
+            if v is not None:
+                out[norm_name(clean_geo(row[0]))] = round(max(0.0, min(1.0, v / 100.0)), 4)
     return out
 
 
+def _strip_city(k: str) -> str:
+    if k.startswith("cityof"):
+        k = k[6:]
+    if k.endswith("city") and len(k) > 4:
+        k = k[:-4]
+    return k
+
+
+def load_muni_metrics() -> tuple[dict[tuple[str, str], dict], dict[str, dict]]:
+    """Parse municipality-level density, growth (2020-2024 %), and urban share from 2024 PSA Census CSVs.
+
+    Returns (by_prov_muni[(prov_norm, muni_norm)] -> dict, by_muni[muni_norm] -> dict for HUCs/fallback).
+    """
+    by_pm: dict[tuple[str, str], dict] = defaultdict(dict)
+    by_m: dict[str, dict] = defaultdict(dict)
+
+    def _put(prov_k: str, raw_name: str, key: str, val) -> None:
+        if val is None:
+            return
+        mk = norm_name(clean_geo(raw_name))
+        if not mk:
+            return
+        ms = _strip_city(mk)
+        for m in (mk, ms):
+            if prov_k:
+                by_pm[(prov_k, m)][key] = val
+            by_m.setdefault(m, {})[key] = val
+
+    def _scan_hier(path: Path, extractor) -> None:
+        cur_reg = ""
+        cur_prov = ""
+        for row in read_psa_csv(path)[1:]:
+            if not row or not row[0]:
+                continue
+            raw = row[0]
+            dots = len(raw) - len(raw.lstrip("."))
+            name_clean = clean_geo(raw)
+            k = norm_name(name_clean)
+            if dots == 0:
+                cur_reg = cur_prov = ""
+            elif dots == 2:
+                cur_reg = k
+                cur_prov = "metromanila" if cur_reg == "nationalcapitalregion" else ""
+            elif dots == 4:
+                if cur_reg == "nationalcapitalregion":
+                    val = extractor(row)
+                    _put("metromanila", name_clean, *val) if val else None
+                else:
+                    cur_prov = k
+                    # HUCs also sit at 4 dots (e.g. City of Cebu, City of Davao)
+                    if "city" in name_clean.lower():
+                        val = extractor(row)
+                        if val:
+                            _put(cur_prov, name_clean, *val)
+                            # Also store under parent province-less HUC key
+                            by_m[_strip_city(k)][val[0]] = val[1]
+            elif dots >= 6:
+                val = extractor(row)
+                if val:
+                    _put(cur_prov, name_clean, *val)
+
+    def _ext_dens(row):
+        if len(row) < 8:
+            return None
+        d = parse_num(row[7])
+        if d is None:
+            p24, area = parse_num(row[3]), parse_num(row[4])
+            if p24 and area and area > 0:
+                d = p24 / area
+        return ("density", round(d, 1)) if d and d > 0 else None
+
+    def _ext_growth(row):
+        if len(row) < 5:
+            return None
+        p20, p24 = parse_num(row[3]), parse_num(row[4])
+        g = compute_growth(int(round(p20)) if p20 else None, int(round(p24)) if p24 else None)
+        return ("growth", round(g * 100.0, 1)) if g is not None else None
+
+    def _ext_urban(row):
+        if len(row) < 4:
+            return None
+        v = parse_num(row[3])
+        return ("urban", round(max(0.0, min(1.0, v / 100.0)), 3)) if v is not None else None
+
+    _scan_hier(PH_RAW / "psa_census_2024/pop_area_density_2015_2024.csv", _ext_dens)
+    _scan_hier(PH_RAW / "psa_census_2024/pop_growth_2010_2024.csv", _ext_growth)
+    _scan_hier(PH_RAW / "psa_census_2024/urban_pop_2024.csv", _ext_urban)
+    return dict(by_pm), dict(by_m)
+
+
+# 13 sample offsets (centre + 6 at 11 km + 6 at 22 km) for resolution-independent ~25 km hazard exposure
+_HAZARD_OFFSETS = [(0.0, 0.0)] + [
+    (r * math.cos(a), r * math.sin(a))
+    for r in (11.0, 22.0)
+    for a in (0.0, math.pi / 3, 2 * math.pi / 3, math.pi, 4 * math.pi / 3, 5 * math.pi / 3)
+]
+
+
 def load_hazard_counts(world_counties: list[dict], county_idx: list[int], grid: HexGrid, proj: MapProjection) -> tuple[dict[str, int], dict[str, int]]:
-    """Count distinct IBTrACS typhoons (1980+) and USGS M>=5 earthquakes (1980+) per province geoid."""
+    """Count distinct IBTrACS typhoons (1980+) and USGS M>=5 earthquakes (1980+) per province geoid (~25 km radius)."""
     typhoons: dict[str, set[str]] = defaultdict(set)
     with open(PH_RAW / "ibtracs_typhoons/ibtracs_wp_par_since1980.csv", encoding="utf-8", errors="replace") as f:
         r = csv.DictReader(f)
@@ -300,14 +408,13 @@ def load_hazard_counts(world_counties: list[dict], county_idx: list[int], grid: 
                 lat, lon = float(row["LAT"]), float(row["LON"])
             except (ValueError, KeyError):
                 continue
-            cell = grid.cell_at(*proj(lon, lat))
-            if cell < 0:
-                continue
-            # A typhoon impacts nearby provinces within ~120 km (2 hex rings + centre)
-            for c in [cell, *grid.neighbours(cell)]:
-                ci = county_idx[c]
-                if ci >= 0:
-                    typhoons[world_counties[ci]["geoid"]].add(sid)
+            x, y = proj(lon, lat)
+            for dx, dy in _HAZARD_OFFSETS:
+                c = grid.cell_at(x + dx, y + dy)
+                if 0 <= c < grid.size:
+                    ci = county_idx[c]
+                    if ci >= 0:
+                        typhoons[world_counties[ci]["geoid"]].add(sid)
 
     quakes: dict[str, int] = Counter()
     with open(PH_RAW / "usgs_earthquakes/phl_earthquakes_m5_since1980.csv", encoding="utf-8", errors="replace") as f:
@@ -317,14 +424,14 @@ def load_hazard_counts(world_counties: list[dict], county_idx: list[int], grid: 
                 lat, lon = float(row["latitude"]), float(row["longitude"])
             except (ValueError, KeyError):
                 continue
-            cell = grid.cell_at(*proj(lon, lat))
-            if cell < 0:
-                continue
+            x, y = proj(lon, lat)
             seen = set()
-            for c in [cell, *grid.neighbours(cell)]:
-                ci = county_idx[c]
-                if ci >= 0:
-                    seen.add(world_counties[ci]["geoid"])
+            for dx, dy in _HAZARD_OFFSETS:
+                c = grid.cell_at(x + dx, y + dy)
+                if 0 <= c < grid.size:
+                    ci = county_idx[c]
+                    if ci >= 0:
+                        seen.add(world_counties[ci]["geoid"])
             for g in seen:
                 quakes[g] += 1
 
@@ -411,6 +518,28 @@ def load_gadm2_centroids() -> dict[str, tuple[float, float, str, str]]:
     return out
 
 
+def _extract_adm2_cells(world: dict) -> list[str | None]:
+    """Extract per-cell ADM2 municipality name from _world.json (if present)."""
+    size = world["grid"]["cols"] * world["grid"]["rows"]
+    muni = world.get("municipality")
+    if isinstance(muni, list) and len(muni) == size:
+        names = world.get("municipalities")
+        if isinstance(names, list):
+            return [
+                (names[i]["name"] if isinstance(names[i], dict) else names[i])
+                if isinstance(i, int) and 0 <= i < len(names) else None
+                for i in muni
+            ]
+        return muni
+    adm2 = world.get("adm2") or world.get("adm2_index")
+    adm2_names = world.get("adm2_names") or world.get("adm2_list")
+    if isinstance(adm2, list) and len(adm2) == size:
+        if isinstance(adm2_names, list):
+            return [adm2_names[i] if isinstance(i, int) and 0 <= i < len(adm2_names) else None for i in adm2]
+        return adm2
+    return [None] * size
+
+
 def build() -> None:
     print("Building Philippines states.json, cities.json, nation.json, counties.json, lenses.json...")
     world = load_interim("_world")
@@ -419,8 +548,10 @@ def build() -> None:
     grid = HexGrid(**world["grid"])
     owner = world["owner"]
     county_arr = world["county"]
+    adm2_cells = _extract_adm2_cells(world)
 
     pop_map, growth_map, area_map = load_census_2024()
+    muni_pm, muni_fallback = load_muni_metrics()
     nat_gdp, reg_gdp = load_grdp()
     ppa = load_ppa()
     med_inc, poverty, inet_reg = load_fies_and_poverty()
@@ -546,6 +677,9 @@ def build() -> None:
         "vigan": (120.3869, 17.5747, "01290", "01"),
         "calapan": (121.1803, 13.4117, "17520", "17"),
         "masbate": (123.6249, 12.3719, "05410", "05"),
+        "talisay": (123.8494, 10.2447, "07220", "07"),
+        "binan": (121.0803, 14.3422, "04340", "04"),
+        "sanjosedelmonte": (121.0475, 14.8139, "03140", "03"),
     }
 
     # Skip individual NCR sub-cities except Manila & Quezon City so Metro Manila isn't cluttered with 16 overlapping banners
@@ -554,30 +688,36 @@ def build() -> None:
         "muntinlupa", "navotas", "paranaque", "pasay", "pasig", "sanjuan", "taguig", "valenzuela",
     }
 
+    DISPLAY_NAME_FIX = {
+        "Dasmarinas": "Dasmariñas",
+        "Los Banos": "Los Baños",
+        "Paranaque": "Parañaque",
+        "Las Pinas": "Las Piñas",
+        "Binan": "Biñan",
+    }
+
     city_rows = []
-    with open(PH_RAW / "psa_census_2024/city_pop_area_density_2010_2024.csv", encoding="utf-8-sig", errors="replace") as f:
-        r = csv.reader(f)
-        next(r)
-        for row in r:
-            if len(row) < 6:
+    for row in read_psa_csv(PH_RAW / "psa_census_2024/city_pop_area_density_2010_2024.csv")[1:]:
+        if len(row) < 6:
+            continue
+        cname = clean_geo(row[0]).replace("City of ", "").replace(" (Capital)", "").strip()
+        cname = DISPLAY_NAME_FIX.get(cname, cname)
+        k = norm_name(cname)
+        if k in NCR_SKIP:
+            continue
+        p2010 = parse_num(row[1])
+        p2015 = parse_num(row[2])
+        p2020 = parse_num(row[3])
+        p2024 = parse_num(row[4])
+        if not p2024 or p2024 < 110000:
+            # Keep regional capitals even if under 110k (e.g. Vigan, Tagbilaran, Masbate)
+            if k not in ("vigan", "tagbilaran", "masbate", "calapan"):
                 continue
-            cname = clean_geo(row[0]).replace("City of ", "").replace(" (Capital)", "").strip()
-            k = norm_name(cname)
-            if k in NCR_SKIP:
-                continue
-            p2010 = parse_num(row[1])
-            p2015 = parse_num(row[2])
-            p2020 = parse_num(row[3])
-            p2024 = parse_num(row[4])
-            if not p2024 or p2024 < 110000:
-                # Keep regional capitals even if under 110k (e.g. Vigan, Tagbilaran, Masbate)
-                if k not in ("vigan", "tagbilaran", "masbate", "calapan"):
-                    continue
-            loc = CITY_COORDS_OVERRIDE.get(k) or gadm2.get(k)
-            if not loc:
-                continue
-            lon, lat, prov_geoid, reg_fips = loc
-            city_rows.append((cname, k, int(round(p2024)), p2010, p2015, p2020, lon, lat, prov_geoid, reg_fips))
+        loc = CITY_COORDS_OVERRIDE.get(k) or gadm2.get(k)
+        if not loc:
+            continue
+        lon, lat, prov_geoid, reg_fips = loc
+        city_rows.append((cname, k, int(round(p2024)), p2010, p2015, p2020, lon, lat, prov_geoid, reg_fips))
 
     # For Manila, represent the Metro Manila (NCR) capital agglomeration so its banner & GDP reflect the true capital metro!
     city_rows.sort(key=lambda x: -x[2])
@@ -648,25 +788,48 @@ def build() -> None:
 
     cities_out.sort(key=lambda c: -c["population"])
 
+    # Index ADM2 cells by (prov_norm, muni_norm) for accurate city footprints on fine hex grids
+    county_norm_by_idx = [norm_name(c["name"]) for c in world_web["counties"]]
+    cells_by_pm: dict[tuple[str, str], list[int]] = defaultdict(list)
+    cells_by_muni: dict[str, list[int]] = defaultdict(list)
+    ncr_idx = fips_to_idx["13"]
+    ncr_cells = [i for i, o in enumerate(owner) if o == ncr_idx]
+    for i, mname in enumerate(adm2_cells):
+        if mname and owner[i] >= 0:
+            mk = _strip_city(norm_name(mname))
+            ci = county_arr[i]
+            if ci >= 0:
+                cells_by_pm[(county_norm_by_idx[ci], mk)].append(i)
+            cells_by_muni[mk].append(i)
+
     # Assign unique land cells to city banners
     taken: set[int] = set()
     for c in cities_out:
         st_idx = fips_to_idx[next(r["fips"] for r in REGIONS if r["abbr"] == c["states"][0])]
         cell = c["cell"]
         if cell < 0 or owner[cell] < 0:
-            cell = nearest_land(grid, owner, max(cell, 0), c["x"], c["y"], st_idx)
+            cell = nearest_land(grid, owner, max(cell, 0), c["x"], c["y"], st_idx, max_rings=12)
         if cell in taken:
-            alt = free_cell(grid, owner, taken, cell, c["x"], c["y"], st_idx, max_rings=3)
+            alt = free_cell(grid, owner, taken, cell, c["x"], c["y"], st_idx, max_rings=6)
             if alt is not None:
                 cell = alt
         taken.add(cell)
         c["cell"] = cell
-        # Footprint = cell + same-province neighbours
+        # Footprint = real ADM2 city hexes (or full NCR for Manila), plus same-province neighbours if tiny
         prov_i = county_arr[cell]
         fp = {cell}
-        for nb in grid.neighbours(cell):
-            if owner[nb] >= 0 and (county_arr[nb] == prov_i or c["capital"] and owner[nb] == st_idx):
-                fp.add(nb)
+        if c["capital"] and ncr_cells:
+            fp.update(ncr_cells)
+        else:
+            ck = _strip_city(norm_name(c["name"]))
+            pk = county_norm_by_idx[prov_i] if prov_i >= 0 else ""
+            adm2_fp = cells_by_pm.get((pk, ck)) or []
+            if adm2_fp:
+                fp.update(adm2_fp)
+            if len(fp) < 4:
+                for nb in grid.neighbours(cell):
+                    if owner[nb] >= 0 and county_arr[nb] == prov_i:
+                        fp.add(nb)
         c["footprint"] = sorted(fp)
 
     add_ranks(cities_out)
@@ -797,17 +960,44 @@ def build() -> None:
         "rows": county_rows,
     })
 
-    # Build lenses.json
+    # Build lenses.json (municipality resolution for density, growth, urban; province resolution for others)
+    MUNI_LENS_KEYS = {"density", "growth", "urban"}
+    # Pre-resolve municipality metric dict per cell once for speed
+    cell_muni_rec: list[dict | None] = [None] * grid.size
+    for i, mname in enumerate(adm2_cells):
+        if mname and owner[i] >= 0:
+            ci = county_arr[i]
+            pk = county_norm_by_idx[ci] if ci >= 0 else ""
+            mk = norm_name(mname)
+            ms = _strip_city(mk)
+            rec = muni_pm.get((pk, mk)) or muni_pm.get((pk, ms)) or muni_fallback.get(mk) or muni_fallback.get(ms)
+            if rec:
+                cell_muni_rec[i] = rec
+
+    def _round_lens_val(key: str, v):
+        if v is None:
+            return None
+        if key in ("typhoons", "earthquakes", "income", "gdp_pc"):
+            return int(round(v))
+        if key in ("density", "growth"):
+            return round(v, 1)
+        return round(v, 3)
+
     def spread(key: str, *, log: bool = False, pct_domain: tuple | None = None):
         vals = [None] * grid.size
+        use_muni = key in MUNI_LENS_KEYS
         for i in range(grid.size):
             if owner[i] < 0:
                 continue
-            ci = county_arr[i]
-            if ci >= 0:
-                v = county_metrics[ci].get(key)
-                if v is not None and (not log or v > 0):
-                    vals[i] = v
+            v = None
+            if use_muni and cell_muni_rec[i] is not None:
+                v = cell_muni_rec[i].get(key)
+            if v is None:
+                ci = county_arr[i]
+                if ci >= 0:
+                    v = county_metrics[ci].get(key)
+            if v is not None and (not log or v > 0):
+                vals[i] = _round_lens_val(key, v)
         nums = sorted(v for v in vals if v is not None)
         if pct_domain:
             dom = list(pct_domain)

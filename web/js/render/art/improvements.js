@@ -26,9 +26,9 @@ const TILE_KM = 300;
 const DIR_COS = [0, 1, 2, 3, 4, 5].map((d) => Math.cos((d * Math.PI) / 3));
 const DIR_SIN = [0, 1, 2, 3, 4, 5].map((d) => Math.sin((d * Math.PI) / 3));
 
-export const ROAD_MIN_RPX = 10; // Interstates and main-line rail from the region view ("mid") in
-export const MAJOR_MIN_RPX = 18; // major highways and secondary rail once hexes are big enough to read them
-export const RAIL2_MIN_RPX = 18;
+export const ROAD_MIN_RPX = 4; // Primary highways and main-line rail from island/region view in
+export const MAJOR_MIN_RPX = 8; // secondary highways once hexes are big enough to read them
+export const RAIL2_MIN_RPX = 8;
 const DETAIL_RPX = 30; // cobbles, centre dashes, sleepers
 
 // --- network geometry ----------------------------------------------------------------------------------------------

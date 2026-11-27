@@ -27,7 +27,7 @@ export function mount(ctx) {
   aCtl.className = "adv-row";
   aBody.appendChild(aCtl);
   let level = counties ? "counties" : "metros";
-  segmented(aCtl, { label: "Places", value: level, options: [...(counties ? [{ value: "counties", label: "Counties" }] : []), { value: "metros", label: "Metros" }], onChange: (v) => { level = v; drawAfford(); } });
+  segmented(aCtl, { label: "Places", value: level, options: [...(counties ? [{ value: "counties", label: "Provinces" }] : []), { value: "metros", label: "Cities" }], onChange: (v) => { level = v; drawAfford(); } });
   for (const [id, label] of [["income", "Income lens"], ["home", "Home value lens"]]) {
     const b = lensButton(app, id, label);
     if (b) aCtl.appendChild(b);
@@ -50,7 +50,7 @@ export function mount(ctx) {
       const sel = set ? lv().rows.filter((r) => set.has(r.key)) : [];
       link.base(sel.length ? rowsHighlight(lv(), sel, { dim: true }) : null, { frame: sel.length > 1 });
       affTable.setSelected(set);
-      selInfo.innerHTML = sel.length ? `<b>${int(sel.length)}</b> ${level} selected · ${count3(sel.reduce((a, r) => a + (r.v.population || 0), 0))} people ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>` : "";
+      selInfo.innerHTML = sel.length ? `<b>${int(sel.length)}</b> ${lv().label.toLowerCase()} selected · ${count3(sel.reduce((a, r) => a + (r.v.population || 0), 0))} people ${frameBtn()}<button type="button" class="adv-mini" data-clear>Clear</button>` : "";
     },
   });
   aBody.insertAdjacentHTML("beforeend", rampLegend({ ramp: RAMPS.heat, domain: ratioDomain, fmt: (v) => `×${v}`, label: "Home value ÷ income" }));
@@ -86,7 +86,7 @@ export function mount(ctx) {
   // --- poverty --------------------------------------------------------------------------------------------------
   let povHist = null;
   if (counties) {
-    const pBody = section(el, { title: "Poverty", note: "Counties by the share of people below the official poverty line. Hover a bar to outline those counties; the table lists them all." });
+    const pBody = section(el, { title: "Poverty", note: "Provinces by the share of people below the official poverty threshold. Hover a bar to outline those provinces; the table lists them all." });
     const pCtl = document.createElement("div");
     pCtl.className = "adv-row";
     pBody.appendChild(pCtl);
@@ -101,15 +101,15 @@ export function mount(ctx) {
     })();
     povHist = histogram(pHost, {
       values: counties.rows.map((r) => ({ key: r.key, v: r.v.poverty, w: r.v.population })), bins: 30, domain: [0, 0.45], height: 120,
-      fmt: (v) => fmtShort("pct", v), unitLabel: "counties", label: "Histogram of county poverty rates",
+      fmt: (v) => fmtShort("pct", v), unitLabel: "provinces", label: "Histogram of provincial poverty rates",
       colorOf: (_, t) => colorScale({ type: "seq", domain: [0, 1], ramp: RAMPS.heat })(t),
-      markers: fin(usPov) ? [{ v: usPov, label: `Lower 48 ${pct(usPov)}` }] : [],
+      markers: fin(usPov) ? [{ v: usPov, label: `PH ${pct(usPov)}` }] : [],
       onHover: (bin) => link.hover(bin ? rowsHighlight(counties, bin.keys.map((k) => counties.byKey.get(k)), { dim: true }) : null),
     });
     const povTable = createTable(pBody, {
-      caption: "County poverty rates", rank: true, maxHeight: 240, rows: counties.rows.filter((r) => fin(r.v.poverty)), search: "Search counties",
+      caption: "Provincial poverty rates", rank: true, maxHeight: 240, rows: counties.rows.filter((r) => fin(r.v.poverty)), search: "Search provinces",
       columns: [
-        { key: "name", label: "County", align: "l", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
+        { key: "name", label: "Province", align: "l", value: (r) => r.name, html: (r) => `${esc(r.name)} <span class="sub">${esc(r.sub)}</span>` },
         { key: "population", label: "People", value: (r) => r.v.population, text: (r) => count3(r.v.population) },
         { key: "poverty", label: "Poverty", value: (r) => r.v.poverty, text: (r) => pct(r.v.poverty), bar: { max: 0.5, color: "rgba(232,119,74,.4)" } },
         { key: "income", label: "Income", value: (r) => r.v.income, text: (r) => money(r.v.income) },
@@ -134,10 +134,10 @@ export function mount(ctx) {
   barList(rBody, { ...rOpts, rows: rentRows(lo), max: rmax, ariaLabel: "Lightest rent burden" });
 
   // --- unemployment ---------------------------------------------------------------------------------------------
-  const uBody = section(el, { title: "Unemployment", note: `Unemployed ÷ civilian labour force (${esc(data.vintage)}). Metros of ${count3(BIG_METRO)}+ people.` });
+  const uBody = section(el, { title: "Unemployment", note: `Unemployed ÷ labour force (${esc(data.vintage)}). Cities of ${count3(BIG_METRO)}+ people.` });
   const uHost = document.createElement("div");
   let uLevel = "states";
-  segmented(uBody, { label: "Areas", value: uLevel, options: [{ value: "states", label: "States" }, { value: "metros", label: "Large metros" }], onChange: (v) => { uLevel = v; drawU(); } });
+  segmented(uBody, { label: "Areas", value: uLevel, options: [{ value: "states", label: "Regions" }, { value: "metros", label: "Large cities" }], onChange: (v) => { uLevel = v; drawU(); } });
   uBody.appendChild(uHost);
   function drawU() {
     uHost.innerHTML = "";
@@ -155,12 +155,11 @@ export function mount(ctx) {
   }
   drawU();
 
-  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["acs_1yr", "acs_5yr"], [
-    `Metro and state figures are ${esc(data.vintage)}; county figures are ${esc(data.countyVintage)} (five years pooled) and run lower in fast-rising markets.`,
-    "Home values are owners' own estimates of what their home would sell for (ACS), not sale prices.",
+  el.insertAdjacentHTML("beforeend", sourcesHtml(data, ["psa_fies_2023", "psa_poverty", "psa_lfs", "psa_census_2020"], [
+    `City and regional figures are from ${esc(data.vintage)}; provincial figures are from ${esc(data.countyVintage)}.`,
+    "Income and poverty figures come from the PSA Family Income and Expenditure Survey (FIES) and Official Poverty Statistics.",
     "Rent ÷ income compares two medians from different households; it is a rough guide, not the share of renters who are cost-burdened.",
-    "Poverty uses the official federal thresholds, which are the same everywhere and do not adjust for local living costs.",
-    ...(data.countiesOffMap ? [`${int(data.countiesOffMap)} of the smallest counties are smaller than one hex, so selecting them outlines nothing on the map.`] : []),
+    ...(data.countiesOffMap ? [`${int(data.countiesOffMap)} of the smallest provinces are smaller than one hex, so selecting them outlines nothing on the map.`] : []),
   ]));
 
   return {

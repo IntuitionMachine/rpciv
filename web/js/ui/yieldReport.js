@@ -69,12 +69,12 @@ export function statDefs(nation) {
   return [
     {
       key: "population", label: "Population", name: "Population", color: "#e8dcc0", iconId: "pop", emoji: "👥", unit: "people",
-      description: "Residents (ACS B01003).", source: nation?.vintage || "", value: n.population ?? null,
+      description: "Residents (PSA Census of Population).", source: nation?.vintage || "", value: n.population ?? null,
     },
     ...yields,
     {
       key: "unemployment", label: "Unemployment", name: "Unemployment rate", color: "#e8dcc0", iconId: "unemployment", emoji: "😐",
-      unit: "rate", description: "Unemployed ÷ civilian labour force (ACS B23025).", source: nation?.vintage || "", value: n.unemployment ?? null,
+      unit: "rate", description: "Unemployed ÷ labour force (PSA Labor Force Survey).", source: nation?.vintage || "", value: n.unemployment ?? null,
     },
   ];
 }
@@ -108,21 +108,17 @@ function rank(list, valueOf, { asc = false, min = 0, fmt = count3, exact = int, 
     .map(({ r, v }, i) => ({ rank: i + 1, kind: r.kind, ref: r.ref, name: r.name, sub: subOf ? subOf(r.o) : r.sub, value: v, text: fmt(v), exact: exact ? exact(v) : "" }));
 }
 
-// Which states the "States" rankings cover. states.json holds the states drawn on the map; when the U.S. total
-// includes people outside them (Alaska and Hawaii are not on the map), say so rather than imply all 50 are ranked.
+// Which regions the "Regions" rankings cover.
 function stateScope(n, st) {
-  const abbrs = new Set(st.map((r) => r.o.abbr).filter(Boolean));
-  const hasDC = abbrs.has("DC");
   const sum = st.reduce((a, r) => a + (fin(r.o.population) ? r.o.population : 0), 0);
   const gap = fin(n.population) && n.population > 0 ? (n.population - sum) / n.population : 0;
-  const label = hasDC ? "States & DC" : "States";
+  const label = "Regions";
   if (!st.length || gap < 0.001) return { label, note: "" };
-  const missing = [["AK", "Alaska"], ["HI", "Hawaii"]].filter(([a]) => !abbrs.has(a)).map(([, name]) => name);
-  const outside = missing.length ? missing.join(" and ") : `${compact(n.population - sum)} residents`;
-  const what = `${st.length - (hasDC ? 1 : 0)} states on the map${hasDC ? " + DC" : ""}`;
+  const outside = `${compact(n.population - sum)} residents`;
+  const what = `${st.length} regions on the map`;
   return {
-    label, inMap: `${hasDC ? "Map states & DC" : "Map states"}`,
-    note: `Ranks the ${what}; ${outside} ${missing.length > 1 ? "are" : "is"} in the U.S. total but not ranked.`,
+    label, inMap: "Map regions",
+    note: `Ranks the ${what}; ${outside} are in the national total but not ranked.`,
   };
 }
 
@@ -171,7 +167,7 @@ export function buildReport(key, { nation, states, cities, lenses, lensVintage }
 function reportPopulation(rep, n, st, metros) {
   const yrs = Array.isArray(n.growth_years) && n.growth_years.length === 2 ? n.growth_years : null;
   const since = yrs ? ` since ${yrs[0]}` : "";
-  if (fin(n.growth)) rep.context.push(`${signedPct(n.growth)}${since} (Census population estimates)`);
+  if (fin(n.growth)) rep.context.push(`${signedPct(n.growth)}${since} (PSA population estimates)`);
   const emp = ratio(n.employed, n.population);
   if (emp != null) rep.context.push(`${compact(n.employed)} employed, ${pct(emp)} of residents`);
 
@@ -180,7 +176,7 @@ function reportPopulation(rep, n, st, metros) {
     label: `${prefix}${x.r.name}`, sub: x.r.kind === "city" ? x.r.sub : "", value: x.v, text: signedPct(x.v), tone: x.v >= 0 ? "good" : "bad",
   });
   const groups = [];
-  if (fin(n.growth)) groups.push({ rows: [{ label: "United States", value: n.growth, text: signedPct(n.growth), tone: n.growth >= 0 ? "good" : "bad", strong: true }] });
+  if (fin(n.growth)) groups.push({ rows: [{ label: "Philippines", value: n.growth, text: signedPct(n.growth), tone: n.growth >= 0 ? "good" : "bad", strong: true }] });
   const extremes = (list, what) => {
     if (list.length < 2) return;
     const k = Math.min(3, Math.floor(list.length / 2));
@@ -188,7 +184,7 @@ function reportPopulation(rep, n, st, metros) {
     groups.push({ title: `Fastest-growing ${what}`, rows: top.map((x) => row(x)) });
     groups.push({ title: bottom.every((x) => x.v < 0) ? `Shrinking ${what}` : `Slowest-growing ${what}`, rows: bottom.map((x) => row(x)) });
   };
-  extremes(sorted(st, g), "states");
+  extremes(sorted(st, g), "regions");
   extremes(sorted(metros, g, METRO_MIN), `metros (${compact(METRO_MIN)}+)`);
   if (groups.length) rep.breakdown = { title: yrs ? `Population change ${yrs[0]}–${yrs[1]}` : "Population change", note: rep.scope.note, groups };
 
@@ -211,7 +207,7 @@ function reportUnemployment(rep, n, st, metros) {
   const row = (label, x) => ({ label: `${label}: ${x.r.name}`, sub: x.r.kind === "city" ? x.r.sub : "", value: x.v, text: pct(x.v), tone: tone(x.v) });
   const spread = (list) => (list.length >= 3 ? [row("Highest", list[0]), row("Median", list[Math.floor(list.length / 2)]), row("Lowest", list.at(-1))] : []);
   const groups = [];
-  if (fin(n.unemployment)) groups.push({ rows: [{ label: "United States", value: n.unemployment, text: pct(n.unemployment), strong: true }] });
+  if (fin(n.unemployment)) groups.push({ rows: [{ label: "Philippines", value: n.unemployment, text: pct(n.unemployment), strong: true }] });
   const sRows = spread(ss), mRows = spread(sorted(metros, u, BIG_METRO_MIN));
   if (sRows.length) groups.push({ title: rep.scope.label, rows: sRows });
   if (mRows.length) groups.push({ title: `Large metros (${compact(BIG_METRO_MIN)}+)`, rows: mRows });
@@ -232,7 +228,7 @@ function reportGold(rep, nation, n, st, metros) {
   const popYear = fin(nation.year) ? nation.year : null;
   const years = n.gdp_year && popYear && n.gdp_year !== popYear ? `${n.gdp_year} GDP ÷ ${popYear} residents` : "GDP ÷ residents";
   if (pp != null) rep.context.push(`${money(pp)} per person (${years})`);
-  if (n.gdp_year) rep.context.push(`Year ${n.gdp_year}, current dollars`);
+  if (n.gdp_year) rep.context.push(`Year ${n.gdp_year}, current pesos`);
 
   const rows = Object.entries(n.gdp_by_industry || {})
     .filter(([, v]) => fin(v))
@@ -297,7 +293,7 @@ function reportJobs(rep, def, nation, n, st, metros) {
     { id: "abs", label: "Most workers", states: rank(st, y), metros: rank(metros, y) },
     {
       id: "rel", label: "Specialisation",
-      hint: `Share of the area's employed in ${def.label.toLowerCase()} jobs ÷ the U.S. share (${pct(nShare)}); metros of ${compact(METRO_MIN)}+ people.`,
+      hint: `Share of the area's employed in ${def.label.toLowerCase()} jobs ÷ the national share (${pct(nShare)}); metros of ${compact(METRO_MIN)}+ people.`,
       states: rank(st, lq, { fmt: fmtLq, exact: exactLq, subOf: shareSub }), metros: rank(metros, lq, { fmt: fmtLq, exact: exactLq, subOf: shareSub, min: METRO_MIN }),
     },
   ];
@@ -415,8 +411,8 @@ export function initYieldReports(opts) {
       ${modes.length ? `<section class="yr-sec"><h3>Leaderboards</h3>
         <div class="yr-controls">
           <div class="yr-tabs" role="tablist" aria-label="Areas">
-            <button role="tab" id="yr-tab-states" data-tab="states" aria-controls="yr-board" aria-selected="${tab === "states"}" tabindex="${tab === "states" ? 0 : -1}" ${hasStates ? "" : "disabled"}>States</button>
-            <button role="tab" id="yr-tab-metros" data-tab="metros" aria-controls="yr-board" aria-selected="${tab === "metros"}" tabindex="${tab === "metros" ? 0 : -1}" ${hasMetros ? "" : "disabled"}>Metros</button>
+            <button role="tab" id="yr-tab-states" data-tab="states" aria-controls="yr-board" aria-selected="${tab === "states"}" tabindex="${tab === "states" ? 0 : -1}" ${hasStates ? "" : "disabled"}>Regions</button>
+            <button role="tab" id="yr-tab-metros" data-tab="metros" aria-controls="yr-board" aria-selected="${tab === "metros"}" tabindex="${tab === "metros" ? 0 : -1}" ${hasMetros ? "" : "disabled"}>Cities</button>
           </div>
           ${modes.length > 1 ? `<div class="yr-modes" role="group" aria-label="Ranking">${modes
             .map((x) => `<button data-mode="${x.id}" aria-pressed="${x.id === mode}">${esc(x.label)}</button>`).join("")}</div>` : ""}

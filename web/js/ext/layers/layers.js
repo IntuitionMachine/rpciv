@@ -42,7 +42,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
   const lensAlpha = (o) => (o.lens ? 0.55 : 1);
 
   const roads = {
-    id: "roads", z: 55, minRpx: ROAD_MIN_RPX,
+    id: "roads", z: 55, minRpx: Math.min(4, ROAD_MIN_RPX),
     visible: () => !!on.roads && !!m.net,
     sig: ver,
     draw(ctx, vp, w, o) {
@@ -51,7 +51,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     },
   };
   const rail = {
-    id: "rail", z: 56, minRpx: ROAD_MIN_RPX,
+    id: "rail", z: 56, minRpx: Math.min(4, ROAD_MIN_RPX),
     visible: () => !!on.rail && !!m.net,
     sig: ver,
     draw(ctx, vp, w, o) {
@@ -60,7 +60,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     },
   };
   const protectedLand = {
-    id: "protected", z: 57, minRpx: 3,
+    id: "protected", z: 57, minRpx: 0.8,
     visible: () => !!on.wonders && m.parks.length > 0,
     sig: ver,
     draw(ctx, vp, w, o) {
@@ -69,7 +69,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     },
   };
   const restricted = {
-    id: "restricted", z: 58, minRpx: 3,
+    id: "restricted", z: 58, minRpx: 0.8,
     visible: () => !!on.military && m.ranges.length > 0,
     sig: ver,
     draw(ctx, vp, w, o) {
@@ -85,7 +85,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     tooltip: (it) => tips.range?.(it.data, m) ?? null,
   };
   const hubs = {
-    id: "hubs", z: 65, minRpx: 10,
+    id: "hubs", z: 65, minRpx: 4,
     visible: () => !!on.hubs && (m.ports.length > 0 || m.airports.length > 0),
     sig: ver,
     list: (Rpx) => visibleSites(m, "hubs", [...m.ports, ...m.airports], Rpx),
@@ -100,7 +100,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     tooltip: (it) => moved(it, (it.kind === "port" ? tips.port?.(it.data, m) : tips.airport?.(it.data, m)) ?? null),
   };
   const forts = {
-    id: "forts", z: 66, minRpx: 8,
+    id: "forts", z: 66, minRpx: 4,
     visible: () => !!on.military && m.installations.length > 0,
     sig: ver,
     list: (Rpx) => visibleSites(m, "forts", m.installations, Rpx),
@@ -114,7 +114,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     tooltip: (it) => moved(it, tips.fort?.(it.data, m) ?? null),
   };
   const wonders = {
-    id: "wonders", z: 67, minRpx: 2.4,
+    id: "wonders", z: 67, minRpx: 0.8,
     visible: () => !!on.wonders && m.wonders.length > 0,
     sig: ver,
     list: (Rpx) => visibleSites(m, "wonders", m.wonders, Rpx),
@@ -128,7 +128,7 @@ export function makeLayers(model, on, { tips = {}, app = null } = {}) {
     tooltip: (it) => moved(it, tips.wonder?.(it.data, m) ?? null),
   };
   const trade = {
-    id: "trade", z: 85, minRpx: 2,
+    id: "trade", z: 85, minRpx: 0.6,
     visible: () => !!on.trade && m.routes.length > 0,
     sig: ver,
     draw(ctx, vp, w, o) {

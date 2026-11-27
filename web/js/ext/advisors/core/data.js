@@ -60,41 +60,41 @@ export function buildData(app) {
 
   const srcTitle = new Map(sources.map((s) => [s.id, s]));
   const nat = nation.nation || {};
-  const vintage = nation.vintage || "ACS 1-year";
-  const countyVintage = counties?.vintage || "ACS 5-year";
+  const vintage = nation.vintage || "PSA 2024 Census";
+  const countyVintage = counties?.vintage || "PSA Provincial Data";
 
   // --- fields ---------------------------------------------------------------------------------------------------
   const F = (key, label, format, o = {}) => ({ key, label, format, unit: o.unit || null, higher_is: o.higher_is || "neutral", source: o.source || "", description: o.description || "", lens: o.lens || null, group: o.group || "Economy", derived: !!o.derived });
   const econFields = (src) => [
-    F("population", "Population", "int", { unit: "people", source: src, group: "People", description: `Residents (${vintage}, B01003).`, lens: "density" }),
-    F("growth", "Growth", "signed", { unit: "population change", higher_is: "neutral", source: "pep_population", group: "People", description: `Population change ${(nat.growth_years || []).join("–")} (Census population estimates, same borders both years).` }),
-    F("gdp", "GDP", "money", { unit: "$ per year", source: "bea_gdp", description: `${nation.gdp_vintage || "BEA"}: GDP in current dollars, counted where the work is done.` }),
+    F("population", "Population", "int", { unit: "people", source: src, group: "People", description: `Residents (${vintage}).`, lens: "density" }),
+    F("growth", "Growth", "signed", { unit: "population change", higher_is: "neutral", source: "psa_census_2024", group: "People", description: `Population change ${(nat.growth_years || []).join("–")} (PSA Census of Population).` }),
+    F("gdp", "GDP", "money", { unit: "₱ per year", source: "psa_gdp_ppa", description: `${nation.gdp_vintage || "PSA GRDP/PPA"}: GDP in current pesos, counted where the work is done.` }),
     F("gdp_pc", "GDP per person", "usd", { unit: "₱ per resident", higher_is: "good", source: "psa_gdp_ppa", description: "GDP ÷ residents (PSA GRDP/PPA ÷ 2024 Census population)." }),
-    F("median_income", "Income", "usd", { unit: "median household income", higher_is: "good", source: src, group: "Prosperity", description: `Median household income (${vintage}).`, lens: "income" }),
+    F("median_income", "Income", "usd", { unit: "median family income", higher_is: "good", source: "psa_fies_2023", group: "Prosperity", description: `Median family income (${vintage}).`, lens: "income" }),
     F("median_rent", "Rent", "usd", { unit: "median gross rent / month", source: src, group: "Prosperity", description: `Median gross rent per month (${vintage}).` }),
     F("home_value", "Home value", "usd", { unit: "median home value", source: src, group: "Prosperity", description: `Median value of owner-occupied homes (${vintage}).`, lens: "home" }),
-    F("affordability", "Home value ÷ income", "ratio", { unit: "years of income", higher_is: "bad", group: "Prosperity", description: "Median home value ÷ median household income: how many years of income a typical home costs.", derived: true }),
-    F("rent_burden", "Rent ÷ income", "pct", { unit: "median rent × 12 ÷ median income", higher_is: "bad", source: src, group: "Prosperity", description: "Median rent × 12 ÷ median household income (a ratio of medians, not the share of renters who are burdened)." }),
-    F("unemployment", "Unemployment", "pct", { unit: "unemployed ÷ labour force", higher_is: "bad", source: src, group: "Prosperity", description: `Unemployed ÷ civilian labour force (${vintage}, B23025).` }),
-    F("employed", "Employed", "int", { unit: "employed residents", source: src, description: `Employed residents, where they live (${vintage}).` }),
-    ...(nation.yields || []).filter((y) => y.unit !== "usd").map((y) => F(`y_${y.key}`, `${y.label} workers`, "int", { unit: "workers", source: src, group: "Yields", description: y.description })),
+    F("affordability", "Home value ÷ income", "ratio", { unit: "years of income", higher_is: "bad", group: "Prosperity", description: "Median home value ÷ median family income: how many years of income a typical home costs.", derived: true }),
+    F("rent_burden", "Rent ÷ income", "pct", { unit: "median rent × 12 ÷ median income", higher_is: "bad", source: src, group: "Prosperity", description: "Median rent × 12 ÷ median family income (a ratio of medians, not the share of renters who are burdened)." }),
+    F("unemployment", "Unemployment", "pct", { unit: "unemployed ÷ labour force", higher_is: "bad", source: "psa_lfs", group: "Prosperity", description: `Unemployed ÷ labour force (${vintage}).` }),
+    F("employed", "Employed", "int", { unit: "employed residents", source: "psa_lfs", description: `Employed residents (${vintage}).` }),
+    ...(nation.yields || []).filter((y) => y.unit !== "usd").map((y) => F(`y_${y.key}`, `${y.label} workers`, "int", { unit: "workers", source: "psa_lfs", group: "Yields", description: y.description })),
   ];
   const rollupFields = () => counties ? [...ROLLUP.map((k) => {
     const f = counties.fields.find((x) => x.key === k);
     if (!f) return null;
     const approx = APPROX.has(k);
     return F(k, f.label + (approx ? " ≈" : ""), f.format, {
-      unit: f.unit, higher_is: f.higher_is, source: f.source || "acs_5yr", group: groupOf(k), lens: COUNTY_LENS[k],
-      description: k === "density" ? `Residents ÷ land area, summed over member counties (${countyVintage}).`
-        : `${f.description} Rolled up from counties as a population-weighted mean${approx ? " (an approximation: not the area's own figure)" : ""}${f.source === "acs_5yr" || !f.source ? ` (${countyVintage})` : ""}.`,
+      unit: f.unit, higher_is: f.higher_is, source: f.source || "psa_census_2024", group: groupOf(k), lens: COUNTY_LENS[k],
+      description: k === "density" ? `Residents ÷ land area, summed over member provinces (${countyVintage}).`
+        : `${f.description} Rolled up from provinces as a population-weighted mean${approx ? " (an approximation: not the area's own figure)" : ""}${!f.source ? ` (${countyVintage})` : ""}.`,
       derived: true,
     });
   }), ...SUMS.flatMap(([n, p]) => {
     const fn = counties.fields.find((x) => x.key === n), fp = counties.fields.find((x) => x.key === p);
     if (!fn || !fp) return [];
     return [
-      F(n, fn.label, fn.format, { unit: fn.unit, source: fn.source, group: groupOf(n), description: `${fn.description} Summed over member counties (${countyVintage}).`, derived: true }),
-      F(p, fp.label, fp.format, { unit: fp.unit, source: fp.source, group: groupOf(p), lens: COUNTY_LENS[p], description: `${fp.description} Summed counts over member counties ÷ their summed base populations (${countyVintage}).`, derived: true }),
+      F(n, fn.label, fn.format, { unit: fn.unit, source: fn.source, group: groupOf(n), description: `${fn.description} Summed over member provinces (${countyVintage}).`, derived: true }),
+      F(p, fp.label, fp.format, { unit: fp.unit, source: fp.source, group: groupOf(p), lens: COUNTY_LENS[p], description: `${fp.description} Summed counts over member provinces ÷ their summed base populations (${countyVintage}).`, derived: true }),
     ];
   })].filter(Boolean) : [];
 
@@ -186,12 +186,12 @@ export function buildData(app) {
       energy_mw: s.energy ? s.energy.total : null,
     },
   }));
-  const landFields = LAND_KEYS.map((k) => F(`land_${k}`, LAND_LABEL[k], "pct", { unit: "share of land", source: "nlcd", group: "Land", description: `Share of the land in ${LAND_LABEL[k].toLowerCase()} (NLCD, mean over the area's hexes).`, lens: k === "forest" ? "forest" : k === "developed" ? "developed" : null }));
-  const energyField = F("energy_mw", "Mapped power", "mw", { unit: "MW of mapped sites", source: "eia_860m", group: "Energy", description: "Capacity of the power sites mapped as resources (each type above its size threshold): not the total generating capacity." });
+  const landFields = LAND_KEYS.map((k) => F(`land_${k}`, LAND_LABEL[k], "pct", { unit: "share of land", source: "psa_land", group: "Land", description: `Share of the land in ${LAND_LABEL[k].toLowerCase()} (mean over the area's hexes).`, lens: k === "forest" ? "forest" : k === "developed" ? "developed" : null }));
+  const energyField = F("energy_mw", "Mapped power", "mw", { unit: "MW of mapped sites", source: "wri_power_plants", group: "Energy", description: "Capacity of the power sites mapped as resources (WRI/DOE): not necessarily total generating capacity." });
   const states_ = makeLevel({
-    id: "states", label: "States", noun: "state",
+    id: "states", label: "Regions", noun: "region",
     rows: stateRows,
-    fields: [F("name", "State", "text", { group: "Name" }), ...econFields("acs_1yr"), ...rollupFields(), F("land_km2", "Land area", "km2", { unit: "km²", source: "census_gazetteer", group: "Land", derived: true }), ...landFields, energyField],
+    fields: [F("name", "Region", "text", { group: "Name" }), ...econFields("psa_census_2024"), ...rollupFields(), F("land_km2", "Land area", "km2", { unit: "km²", source: "psa_census_2024", group: "Land", derived: true }), ...landFields, energyField],
     highlight: (rows) => ({ states: new Set(rows.map((r) => r.ref)) }),
     rowAtCell: (cell, byKey) => (owner[cell] >= 0 ? stateRows[owner[cell]] || null : null),
     focus: (row) => app.selectState(row.ref, { fly: true }),
@@ -202,15 +202,15 @@ export function buildData(app) {
   const metroRows = cities.map((c) => ({
     key: c.id, name: c.name, sub: (c.states || []).join("–"), level: "metros", ref: c,
     v: {
-      name: c.name, states: (c.states || []).join("–"), kind: c.metro === false ? "Micro" : "Metro",
+      name: c.name, states: (c.states || []).join("–"), kind: c.metro === false ? "Component" : "Major",
       ...econValues(c), ...rolled(roll.metros, c.id), energy_mw: mwByMetro.get(c.id) ?? 0,
     },
   }));
   const metroByCity = new Map(metroRows.map((r) => [r.ref, r]));
   const metros = makeLevel({
-    id: "metros", label: "Metros", noun: "metro",
+    id: "metros", label: "Cities", noun: "city",
     rows: metroRows,
-    fields: [F("name", "Metro", "text", { group: "Name" }), F("states", "States", "text", { group: "Name" }), F("kind", "Type", "text", { group: "Name", description: "Metropolitan (50,000+ urban core) or micropolitan area (OMB)." }), ...econFields("acs_1yr"), ...rollupFields(), F("land_km2", "Land area", "km2", { unit: "km²", source: "census_gazetteer", group: "Land", derived: true }), energyField],
+    fields: [F("name", "City", "text", { group: "Name" }), F("states", "Regions", "text", { group: "Name" }), F("kind", "Type", "text", { group: "Name", description: "Major urban centre / HUC or component city." }), ...econFields("psa_census_2024"), ...rollupFields(), F("land_km2", "Land area", "km2", { unit: "km²", source: "psa_census_2024", group: "Land", derived: true }), energyField],
     highlight: (rows, o = {}) => {
       const cells = new Set();
       for (const r of rows) for (const c of r.ref.footprint || [r.ref.cell]) cells.add(c);
@@ -242,11 +242,11 @@ export function buildData(app) {
     // Counties smaller than a hex own no cell: counties.json `cell` (the hex nearest the county's centre) stands in.
     const cellsOfRow = (r) => countyCells.get(r.ref) || (Number.isInteger(r.v.cell) ? [r.v.cell] : []);
     const fields = counties.fields.filter((f) => f.key !== "cbsa" && f.key !== "geoid" && f.key !== "cell").map((f) => ({
-      ...F(f.key, f.key === "name" ? "County" : f.label, f.format, { unit: f.unit, higher_is: f.higher_is, source: f.source, description: f.description, lens: COUNTY_LENS[f.key], group: groupOf(f.key) }),
+      ...F(f.key, f.key === "name" ? "Province" : f.key === "state" ? "Region" : f.label, f.format, { unit: f.unit, higher_is: f.higher_is, source: f.source, description: f.description, lens: COUNTY_LENS[f.key], group: groupOf(f.key) }),
     }));
-    fields.splice(2, 0, F("metro", "Metro", "text", { group: "Name", description: "The metro or micro area the county belongs to (OMB), if it is on the map." }));
+    fields.splice(2, 0, F("metro", "City", "text", { group: "Name", description: "The city or urban area the province is linked to, if it is on the map." }));
     counties_ = makeLevel({
-      id: "counties", label: "Counties", noun: "county",
+      id: "counties", label: "Provinces", noun: "province",
       rows: countyRows, fields,
       highlight: (rows) => {
         const cells = new Set();
@@ -354,13 +354,13 @@ function extendMilitary(data, mil) {
   const byState = instBy("state"), byMetro = instBy("cbsa");
   const src = { personnel: "dmdc_personnel", spending: "oldcc_spending" };
   states.addFields([
-    F4("mil_active", "Active-duty troops", "int", { unit: "people, by duty state", source: src.personnel, group: "Military", description: `Active-duty personnel of all services incl. Coast Guard, by duty state (${v.personnel || "DMDC"}). Excludes most deployed and temporary-duty personnel.` }),
-    F4("mil_guard_reserve", "Guard & Reserve", "int", { unit: "people", source: src.personnel, group: "Military", description: `National Guard and Reserve members by state (${v.personnel || "DMDC"}).` }),
-    F4("mil_civilian", "DoD civilians", "int", { unit: "people", source: src.personnel, group: "Military", description: `Civilian Defense Department employees by duty state (${v.personnel || "DMDC"}).` }),
-    F4("def_spending", "Defense spending", "money", { unit: "$ per year", source: src.spending, group: "Military", description: `Defense contracts, grants and payroll in the state (${v.spending || "OLDCC"}). Contracts follow the place of performance, not where bases are.` }),
-    F4("def_per_resident", "Defense $ per resident", "usd", { unit: "$ per resident", source: src.spending, group: "Military", description: `Defense spending ÷ residents, as published by OLDCC (${v.spending || "OLDCC"}).` }),
-    F4("def_pct_gdp", "Defense share of GDP", "pct", { unit: "of state GDP", source: src.spending, group: "Military", description: `Defense spending ÷ state GDP, as published by OLDCC (${v.spending || "OLDCC"}).` }),
-    F4("installations", "Installations", "int", { unit: "MIRTA sites", source: "mirta", group: "Military", description: `Active, semi-active and caretaker DoD installations in the state (${v.installations || "MIRTA"}), by the state MIRTA files them under. Sizes are not comparable: a site can be an office or a training range.` }),
+    F4("mil_active", "Active-duty troops", "int", { unit: "people, by region", source: src.personnel, group: "Military", description: `Active-duty personnel by region (${v.personnel || "Defense data"}).` }),
+    F4("mil_guard_reserve", "Reserve personnel", "int", { unit: "people", source: src.personnel, group: "Military", description: `Reserve members by region (${v.personnel || "Defense data"}).` }),
+    F4("mil_civilian", "Defense civilians", "int", { unit: "people", source: src.personnel, group: "Military", description: `Civilian defense employees by region (${v.personnel || "Defense data"}).` }),
+    F4("def_spending", "Defense spending", "money", { unit: "₱ per year", source: src.spending, group: "Military", description: `Defense contracts, grants and payroll in the region (${v.spending || "Defense data"}).` }),
+    F4("def_per_resident", "Defense ₱ per resident", "usd", { unit: "₱ per resident", source: src.spending, group: "Military", description: `Defense spending ÷ residents (${v.spending || "Defense data"}).` }),
+    F4("def_pct_gdp", "Defense share of GDP", "pct", { unit: "of regional GDP", source: src.spending, group: "Military", description: `Defense spending ÷ regional GDP (${v.spending || "Defense data"}).` }),
+    F4("installations", "Installations", "int", { unit: "sites", source: "mirta", group: "Military", description: `Military installations in the region (${v.installations || "Defense data"}).` }),
   ]);
   for (const r of states.rows) {
     const s = mil.states?.[r.key];
@@ -372,8 +372,8 @@ function extendMilitary(data, mil) {
     });
   }
   metros.addFields([
-    F4("encampment", "Garrison", "text", { source: "mirta", group: "Military", description: `Fortress or garrison when the metro passes the Encampment rule; blank otherwise. ${mil.rules?.encampment || mil.rule || ""}` }),
-    F4("installations", "Installations", "int", { unit: "MIRTA sites", source: "mirta", group: "Military", description: `DoD installations (MIRTA) whose point lies in the metro's member counties (${v.installations || "MIRTA"}). Sizes are not comparable.` }),
+    F4("encampment", "Garrison", "text", { source: "mirta", group: "Military", description: `Fortress or garrison when the city passes the Encampment rule; blank otherwise. ${mil.rules?.encampment || mil.rule || ""}` }),
+    F4("installations", "Installations", "int", { unit: "sites", source: "mirta", group: "Military", description: `Military installations whose point lies in the city's member provinces (${v.installations || "Defense data"}).` }),
   ]);
   for (const r of metros.rows) {
     const c = mil.cities?.[r.key];
@@ -385,16 +385,16 @@ function extendMilitary(data, mil) {
 function extendDistricts(data, d) {
   const { metros, counties } = data.levels;
   const cat = new Map((d.catalog || []).map((c) => [c.id, c]));
-  const vint = d.vintage || "BLS QCEW";
+  const vint = d.vintage || "PSA PPA / LFS";
   const lb = (x) => (x?.lower_bound ? " (at least)" : "");
   metros.addFields([
-    F4("city_type", "City type", "text", { source: "bls_qcew", group: "Districts", description: `The city's badge: named after its strongest district, by its speciality when one is at least 3× the national share of jobs (${vint}). Blank: no district passes (a diversified economy).` }),
-    F4("districts", "Districts", "text", { source: "bls_qcew", group: "Districts", description: `Industry districts the metro qualifies for, strongest first. ${d.rule?.text || ""}` }),
-    F4("n_districts", "Number of districts", "int", { source: "bls_qcew", group: "Districts", description: "How many districts pass the rule (up to 5)." }),
-    F4("qcew_jobs", "Jobs (QCEW)", "int", { unit: "covered jobs, where the employer is", source: "bls_qcew", group: "Districts", description: `Annual average covered jobs, all ownerships, summed over member counties (${vint}). Counted where the employer is, unlike the ACS figures (where people live).` }),
-    F4("qcew_pay", "Average pay (QCEW)", "usd", { unit: "$ per job per year", source: "bls_qcew", group: "Districts", description: `Average annual pay per covered job (${vint}).` }),
-    F4("top_industry", "Most specialised industry", "text", { source: "bls_qcew", group: "Districts", description: "The detailed industry (of those this project fetches) with the highest location quotient and at least 1,000 jobs." }),
-    F4("top_lq", "Its location quotient", "lq", { unit: "× the national share of jobs", source: "bls_qcew", group: "Districts", description: "Location quotient of the most specialised industry: its share of the metro's jobs ÷ its share of US jobs. A lower bound where BLS withheld some counties." }),
+    F4("city_type", "City type", "text", { source: "psa_gdp_ppa", group: "Districts", description: `The city's badge: named after its strongest district, by its speciality when one is at least 3× the national share (${vint}). Blank: no district passes (a diversified economy).` }),
+    F4("districts", "Districts", "text", { source: "psa_gdp_ppa", group: "Districts", description: `Industry districts the city qualifies for, strongest first. ${d.rule?.text || ""}` }),
+    F4("n_districts", "Number of districts", "int", { source: "psa_gdp_ppa", group: "Districts", description: "How many districts pass the rule (up to 5)." }),
+    F4("qcew_jobs", "District jobs", "int", { unit: "estimated jobs", source: "psa_gdp_ppa", group: "Districts", description: `Estimated jobs across member provinces (${vint}).` }),
+    F4("qcew_pay", "Average pay", "usd", { unit: "₱ per job per year", source: "psa_lfs", group: "Districts", description: `Estimated average annual pay (${vint}).` }),
+    F4("top_industry", "Most specialised industry", "text", { source: "psa_gdp_ppa", group: "Districts", description: "The detailed industry with the highest location quotient." }),
+    F4("top_lq", "Its location quotient", "lq", { unit: "× the national share of jobs", source: "psa_gdp_ppa", group: "Districts", description: "Location quotient of the most specialised industry: its share of the city's economy ÷ the national share." }),
   ]);
   for (const r of metros.rows) {
     const c = d.cities?.[r.key];
@@ -410,8 +410,8 @@ function extendDistricts(data, d) {
   }
   if (counties && d.counties) {
     counties.addFields([
-      F4("districts", "Districts", "text", { source: "bls_qcew", group: "Districts", description: `Industry districts the county qualifies for, strongest first (${vint}). ${d.rule?.county_note || ""}` }),
-      F4("qcew_jobs", "Jobs (QCEW)", "int", { unit: "covered jobs, where the employer is", source: "bls_qcew", group: "Districts", description: `Annual average covered jobs, all ownerships (${vint}).` }),
+      F4("districts", "Districts", "text", { source: "psa_gdp_ppa", group: "Districts", description: `Industry districts the province qualifies for, strongest first (${vint}). ${d.rule?.county_note || ""}` }),
+      F4("qcew_jobs", "District jobs", "int", { unit: "estimated jobs", source: "psa_gdp_ppa", group: "Districts", description: `Estimated jobs (${vint}).` }),
     ]);
     for (const r of counties.rows) {
       const c = d.counties[r.key];
@@ -421,7 +421,7 @@ function extendDistricts(data, d) {
   }
 }
 
-// Citizens: a few telling shares of each ACS row (the City View draws the whole mix as person icons).
+// Citizens: a few telling shares of each citizen row (the City View draws the whole mix as person icons).
 const CZ = [
   ["workforce", "executive", "Executives & managers"], ["workforce", "engineer", "Engineers & scientists"], ["workforce", "healer", "Health workers"],
   ["workforce", "service", "Service workers"], ["workforce", "farmer", "Farmers & foresters"], ["workforce", "builder", "Builders & repairers"],
@@ -429,22 +429,22 @@ const CZ = [
   ["age", "child", "Children"], ["age", "young", "Young adults"], ["age", "elder", "Elders 65+"],
   ["commute", "drove_alone", "Drive alone"], ["commute", "transit", "Public transit"], ["commute", "walk", "Walk to work"], ["commute", "home", "Work from home"],
   ["education", "graduate", "Graduate degrees"],
-  ["nativity", "born_in_state", "Born in the state"], ["nativity", "foreign_born", "Born abroad (1-yr)"],
+  ["nativity", "born_in_state", "Born in the region"], ["nativity", "foreign_born", "Born abroad"],
 ];
 function extendCitizens(data, cz) {
   const { metros } = data.levels;
-  const vint = cz.vintage || "ACS 1-year";
+  const vint = cz.vintage || "PSA Census / LFS";
   const label = new Map(Object.entries(cz.groups || {}).flatMap(([row, list]) => list.map((g) => [`${row}.${g.key}`, g.label])));
   const rowDesc = cz.rows || {};
   const grp = { workforce: "Citizens: work", age: "Citizens: age", commute: "Citizens: commute", education: "Citizens: education", nativity: "Citizens: origin" };
   metros.addFields([
     ...CZ.map(([row, key, lbl]) => F4(`cz_${key}`, lbl, "pct", {
-      unit: `share of ${(rowDesc[row] || row).toLowerCase()}`, source: "acs_1yr", group: grp[row],
-      description: `${label.get(`${row}.${key}`) || lbl}: share of ${(rowDesc[row] || row).toLowerCase()} (${vint}). Blank where Census left the area out of that table.${row === "commute" ? " Shares of workers, not of all residents." : ""}`,
+      unit: `share of ${(rowDesc[row] || row).toLowerCase()}`, source: "psa_census_2024", group: grp[row],
+      description: `${label.get(`${row}.${key}`) || lbl}: share of ${(rowDesc[row] || row).toLowerCase()} (${vint}). Blank where unavailable.${row === "commute" ? " Shares of workers, not of all residents." : ""}`,
     })),
-    F4("cz_median_age", "Median age (1-yr)", "years", { unit: "years", source: "acs_1yr", group: grp.age, description: `Median age of residents, ACS B01002 (${vint}): the area's own median, unlike the county roll-up.` }),
-    F4("cz_degree", "Bachelor's or more (1-yr)", "pct", { unit: "of adults 25+", source: "acs_1yr", group: grp.education, description: `Adults 25+ with a bachelor's degree or higher (${vint}, C15003).` }),
-    F4("cz_specialist", "Most over-represented citizen", "text", { source: "acs_1yr", group: "Citizens", description: `The category most over-represented against the national share (at least 1.5×). ${cz.rule?.text || ""}` }),
+    F4("cz_median_age", "Median age", "years", { unit: "years", source: "psa_census_2024", group: grp.age, description: `Median age of residents (${vint}).` }),
+    F4("cz_degree", "College degree or more", "pct", { unit: "of adults 25+", source: "psa_lfs", group: grp.education, description: `Adults 25+ with a college degree or higher (${vint}).` }),
+    F4("cz_specialist", "Most over-represented citizen", "text", { source: "psa_census_2024", group: "Citizens", description: `The category most over-represented against the national share (at least 1.5×). ${cz.rule?.text || ""}` }),
   ]);
   for (const r of metros.rows) {
     const c = cz.cities?.[r.key];
@@ -452,7 +452,7 @@ function extendCitizens(data, cz) {
     r.v.cz_median_age = c?.age?.median ?? null;
     r.v.cz_degree = c?.education?.bachelors_plus ?? null;
     const sp = (c?.specialists || []).find((s) => s.ratio >= 1);
-    r.v.cz_specialist = sp ? `${label.get(`${sp.row}.${sp.key}`) || sp.key} ×${sp.ratio.toFixed(1)}${c.reliable === false ? " (micro: rough)" : ""}` : null;
+    r.v.cz_specialist = sp ? `${label.get(`${sp.row}.${sp.key}`) || sp.key} ×${sp.ratio.toFixed(1)}${c.reliable === false ? " (rough)" : ""}` : null;
   }
 }
 
