@@ -38,7 +38,8 @@ export function initHelp() {
       <section><h3>${title}</h3>${rows.map(([keys, what]) => `
         <div class="help-row"><span class="keys">${keys.map((k) => `<kbd>${k}</kbd>`).join("")}</span><span>${what}</span></div>`).join("")}
       </section>`).join("")}</div>
-    <p class="help-foot">Every number traces back to public data: open the <b>Almanac</b> for sources.
+    <p class="help-foot">Created by <a class="help-credit" href="https://intuitionmachine.com/" target="_blank" rel="noopener"><img class="im-mark" src="assets/im-mark.png" alt="">Intuition Machine, Inc.</a> ·
+      Every number traces back to public data: open the <b>Almanac</b> for sources.
       The link in the address bar always reopens this exact view.</p>`;
 
   const close = () => {

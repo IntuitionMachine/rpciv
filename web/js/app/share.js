@@ -107,7 +107,7 @@ export function composeImage(info, { height = IMG_H } = {}) {
   ctx.fill();
   ctx.beginPath();
   ctx.arc(ex, cy, 24.5, 0, Math.PI * 2);
-  ctx.fillStyle = "#2a4d8f";
+  ctx.fillStyle = "#0f6e63";
   ctx.fill();
   star(ctx, ex, cy + 1, 14, 6, "#f8f0d8");
 
@@ -115,11 +115,11 @@ export function composeImage(info, { height = IMG_H } = {}) {
   ctx.fillStyle = "#ecd08e";
   ctx.font = `bold 36px ${SERIF}`;
   spaced(ctx, 5);
-  ctx.fillText("UNITED STATES", 112, cy + 2);
+  ctx.fillText("PHILIPPINES", 112, cy + 2);
   spaced(ctx, 0);
-  ctx.fillStyle = "#b9ab88";
-  ctx.font = `italic 17px ${SERIF}`;
-  ctx.fillText("A strategy-map atlas of the real economy", 114, cy + 28);
+  ctx.fillStyle = "#43c4b0";
+  ctx.font = `600 15px ${SANS}`;
+  ctx.fillText("Created by Intuition Machine, Inc. · intuitionmachine.com", 114, cy + 28);
 
   // Lens + legend ramp
   const mx = 640;
@@ -161,7 +161,7 @@ export function composeImage(info, { height = IMG_H } = {}) {
     ctx.font = `13px ${SANS}`;
     ctx.fillStyle = "#b9ab88";
     spaced(ctx, 2);
-    ctx.fillText(sel.kind === "state" ? "STATE" : "CITY", rx, cy - 30);
+    ctx.fillText(sel.kind === "state" ? "REGION" : "CITY", rx, cy - 30);
     spaced(ctx, 0);
     ctx.font = `bold 24px ${SERIF}`;
     ctx.fillStyle = "#f3e6c4";

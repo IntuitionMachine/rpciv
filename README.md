@@ -1,6 +1,6 @@
 # rpciv: the Philippines as a strategy game, built from real data
 
-**Live: [intuitionmachine.github.io/rpciv](https://intuitionmachine.github.io/rpciv/)**
+**Live: [intuitionmachine.github.io/rpciv](https://intuitionmachine.github.io/rpciv/)** · Created by **[Intuition Machine, Inc.](https://intuitionmachine.com/)**
 
 ![The Philippine archipelago drawn as a 4X strategy map: painted hex terrain, regions, power plants, ports, and bronze city banners](docs/images/hero.jpg)
 
@@ -127,9 +127,10 @@ file sizes, and SHA-256 checksums.
 
 ## Credits and license
 
-Built on the open-source `usaciv` visualizer engine (MIT-licensed; see [LICENSE](LICENSE)) and adapted for the
-Philippines (`rpciv`). The MIT license covers the code only, not the underlying datasets, which remain under their
-respective publishers' open-data terms (PSA Open Data, NOAA/USGS public domain, Natural Earth public domain, CC BY / ODbL).
+Created by **[Intuition Machine, Inc.](https://intuitionmachine.com/)**. Built on the open-source `usaciv` visualizer
+engine (MIT-licensed; see [LICENSE](LICENSE)) and adapted for the Philippines (`rpciv`). The MIT license covers the code
+only, not the underlying datasets, which remain under their respective publishers' open-data terms (PSA Open Data,
+NOAA/USGS public domain, Natural Earth public domain, CC BY / ODbL).
 
 The look is inspired by turn-based 4X strategy games, with all glyphs, icons, and textures drawn in code. This project
 is not affiliated with or endorsed by any game publisher.

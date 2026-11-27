@@ -8,6 +8,11 @@
   --line: rgba(201, 164, 92, 0.55);
   --serif: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --im-signal: #0f6e63;
+  --im-signal-lit: #43c4b0;
+  --im-deep: #0d1214;
+  --im-deep-2: #182124;
   --topbar-h: 40px;
 }
 
@@ -49,7 +54,31 @@ svg.icon { display: inline-block; flex: none; }
   font-variant-numeric: tabular-nums;
 }
 .brand { font-family: var(--serif); font-weight: bold; letter-spacing: .14em; text-transform: uppercase; color: var(--gold-bright); white-space: nowrap; display: flex; align-items: center; flex: none; }
-.brand-emblem { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #2a4d8f; border: 1px solid var(--gold); color: #fff; font-size: 13px; margin-right: 6px; box-shadow: 0 0 0 2px rgba(0,0,0,.4); }
+.brand-emblem { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--im-signal); border: 1px solid var(--gold); color: #fff; font-size: 13px; margin-right: 6px; box-shadow: 0 0 0 2px rgba(0,0,0,.4); }
+.brand-credit {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 2px 8px 2px 6px;
+  border-radius: 12px; text-decoration: none; text-transform: none; letter-spacing: .01em;
+  font: 500 11px/1.2 var(--sans); color: #d3dadb;
+  background: linear-gradient(180deg, rgba(15,110,99,.32), rgba(13,18,20,.78));
+  border: 1px solid rgba(67,196,176,.42); transition: border-color .15s, background .15s, color .15s;
+}
+.brand-credit:hover, .brand-credit:focus-visible { border-color: var(--im-signal-lit); background: rgba(15,110,99,.48); color: #fff; }
+.brand-credit b { font-weight: 700; color: var(--im-signal-lit); letter-spacing: -.01em; }
+.brand-credit:hover b { color: #7ae5d5; }
+.im-mark { display: block; width: auto; height: 15px; flex: none; }
+@media (max-width: 1180px) { .brand-credit-txt { display: none; } .brand-credit { padding: 3px 5px; margin-left: 7px; } }
+.im-credit-card {
+  display: flex; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 14px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--im-deep), var(--im-deep-2));
+  border: 1px solid rgba(67,196,176,.35); border-left: 3px solid var(--im-signal-lit); color: #d3dadb;
+}
+.im-credit-card .im-mark { height: 28px; }
+.im-credit-card a { color: var(--im-signal-lit); font-weight: 600; text-decoration: none; }
+.im-credit-card a:hover { text-decoration: underline; }
+.im-credit-card small { display: block; color: #9fabad; font-size: 11.5px; margin-top: 2px; }
+.help-credit { display: inline-flex; align-items: center; gap: 6px; color: var(--im-signal-lit); font-weight: 600; text-decoration: none; }
+.help-credit:hover { text-decoration: underline; }
+.help-credit .im-mark { height: 14px; }
 .yields { display: flex; gap: 14px; flex: none; }
 .yield {
   position: relative; display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 14px; white-space: nowrap; cursor: pointer; border-radius: 4px;

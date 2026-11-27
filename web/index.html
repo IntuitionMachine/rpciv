@@ -3,30 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>rpciv — the Philippines as a strategy game</title>
-  <meta name="description" content="The real Philippines drawn like a 4X strategy map: hex terrain, cities with yields, lenses and resources, all from public data.">
-  <meta name="theme-color" content="#131e2a">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='31' fill='%23120d06'/%3E%3Ccircle cx='32' cy='32' r='29' fill='%23c9a45c'/%3E%3Ccircle cx='32' cy='32' r='24' fill='%232a4d8f'/%3E%3Cpath fill='%23f8f0d8' d='M32 14l4.9 11.3 12.2 1.1-9.3 8.1 2.8 12-10.6-6.4-10.6 6.4 2.8-12-9.3-8.1 12.2-1.1z'/%3E%3C/svg%3E">
+  <title>rpciv — the Philippines as a strategy game · Intuition Machine, Inc.</title>
+  <meta name="author" content="Intuition Machine, Inc.">
+  <meta name="description" content="The real Philippines drawn like a 4X strategy map: hex terrain, cities with yields, lenses and resources, all from public data. Created by Intuition Machine, Inc.">
+  <meta name="theme-color" content="#0d1214">
+  <link rel="icon" type="image/png" href="assets/im-mark.png">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="rpciv">
-  <meta property="og:title" content="The Philippines as a strategy-game map">
-  <meta property="og:description" content="The real Philippine economy and geography drawn like a 4X strategy map: hex terrain, cities with yields, lenses and resources, all from public data (PSA, GADM, NOAA, USGS, WRI, Natural Earth).">
-  <meta property="og:image:alt" content="Hex map of the Philippines with city banners, in the style of a strategy game">
+  <meta property="og:site_name" content="rpciv · Intuition Machine, Inc.">
+  <meta property="og:title" content="The Philippines as a strategy-game map · Intuition Machine, Inc.">
+  <meta property="og:description" content="The real Philippine economy and geography drawn like a 4X strategy map: hex terrain, cities with yields, lenses and resources, all from public data. Created by Intuition Machine, Inc.">
+  <meta property="og:image:alt" content="Hex map of the Philippines with city banners, created by Intuition Machine, Inc.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="The Philippines as a strategy-game map">
-  <meta name="twitter:description" content="The real Philippine economy drawn like a 4X strategy map, from public data.">
-  <meta name="twitter:image:alt" content="Hex map of the Philippines with city banners, in the style of a strategy game">
+  <meta name="twitter:title" content="The Philippines as a strategy-game map · Intuition Machine, Inc.">
+  <meta name="twitter:description" content="The real Philippine economy drawn like a 4X strategy map, from public data. Created by Intuition Machine, Inc.">
+  <meta name="twitter:image:alt" content="Hex map of the Philippines with city banners, created by Intuition Machine, Inc.">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header id="topbar">
-    <div class="brand" title="Philippines"><span class="brand-emblem" aria-hidden="true">☀</span><span class="brand-text">Philippines</span></div>
+    <div class="brand" title="Philippines"><span class="brand-emblem" aria-hidden="true">☀</span><span class="brand-text">Philippines</span><a class="brand-credit" href="https://intuitionmachine.com/" target="_blank" rel="noopener" title="Created by Intuition Machine, Inc."><img class="im-mark" src="assets/im-mark.png" alt="" width="15" height="18"><span class="brand-credit-txt">by <b>Intuition Machine</b></span></a></div>
     <div id="yields" class="yields" aria-label="National yields"></div>
     <div class="spacer"></div>
     <div class="search" role="search">
       <span class="search-ic" aria-hidden="true"></span>
-      <input id="search-input" type="search" placeholder="Search cities &amp; provinces" autocomplete="off" spellcheck="false"
-        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" aria-label="Search cities and provinces (/ or Ctrl K)">
+      <input id="search-input" type="search" placeholder="Search cities &amp; regions" autocomplete="off" spellcheck="false"
+        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" aria-label="Search cities and regions (/ or Ctrl K)">
       <kbd class="search-kbd" aria-hidden="true">/</kbd>
     </div>
     <div id="turn" class="turn"></div>

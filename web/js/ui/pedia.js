@@ -36,7 +36,12 @@ export function initPedia(data) {
       <p>Drag or arrow keys / WASD to pan · scroll, +/– or double-click to zoom · click a city or a province to open it ·
       / or ⌘K to search · L to cycle lenses · R to show or hide resources · ? for all shortcuts · Esc to close.</p>
       <p>The address bar always holds a link to what you're looking at (lens, selection and view); use <i>Share</i> to copy it
-      or to download a picture.</p>`,
+      or to download a picture.</p>
+      <div class="im-credit-card">
+        <img class="im-mark" src="assets/im-mark.png" alt="Intuition Machine, Inc.">
+        <div>Created by <a href="https://intuitionmachine.com/" target="_blank" rel="noopener">Intuition Machine, Inc.</a>
+        <small>Making the AI-native enterprise real · intuitionmachine.com</small></div>
+      </div>`,
     Yields: () => `
       ${h2("y-production", "⚙️", "Yields")}
       <p>Strategy-game yields mapped onto real Philippine measures. Job-based yields estimate workers by major sector
