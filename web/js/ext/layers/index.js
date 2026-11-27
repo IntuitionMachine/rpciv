@@ -11,12 +11,13 @@ import { makeLayers } from "./layers.js";
 import { tips } from "./tips.js";
 
 const TOGGLES = [
-  { id: "roads", label: "Roads", icon: "t-road", def: true, title: "Interstates and major highways (Natural Earth, as map art)", layers: ["roads"] },
-  { id: "rail", label: "Railroads", icon: "t-rail", def: true, title: "Main and secondary rail lines (Natural Earth, as map art)", layers: ["rail"] },
-  { id: "hubs", label: "Ports & airports", icon: "d-harbor", def: true, title: "USACE principal ports by tonnage, FAA primary and cargo airports", layers: ["hubs"] },
-  { id: "military", label: "Military", icon: "m-army", def: true, title: "DoD installations as forts, the largest ranges as restricted ground", layers: ["forts", "restricted", "plates"] },
-  { id: "wonders", label: "Wonders", icon: "w-landmark", def: true, title: "Most-visited parks, top research universities and curated landmarks", layers: ["wonders", "protected", "plates"] },
-  { id: "trade", label: "Trade routes", icon: "t-trade", def: false, title: "The 40 largest freight flows between states (FAF5 estimates)", layers: ["trade"] },
+  { id: "geography", label: "Geography", icon: "g-land", def: true, title: "Seas, mountain ranges, peaks, lakes, forests, plains and rivers", layers: ["geography"] },
+  { id: "roads", label: "Roads", icon: "t-road", def: true, title: "Expressways (NLEX, SLEX, TPLEX, SCTEX, STAR, CALAX, CCLEX), AH26 & primary highways", layers: ["roads"] },
+  { id: "rail", label: "Railroads", icon: "t-rail", def: true, title: "PNR main line, Metro Manila LRT/MRT & regional rail corridors", layers: ["rail"] },
+  { id: "hubs", label: "Ports & airports", icon: "d-harbor", def: true, title: "Philippine seaports and RoRo terminals (HDX / OSM), airports (OurAirports / CAAP)", layers: ["hubs"] },
+  { id: "military", label: "Military", icon: "m-army", def: true, title: "Defense installations as forts, largest ranges as restricted ground", layers: ["forts", "restricted", "plates"] },
+  { id: "wonders", label: "Wonders", icon: "w-landmark", def: true, title: "Natural parks, UNESCO heritage sites, top universities and landmarks", layers: ["wonders", "protected", "plates"] },
+  { id: "trade", label: "Trade routes", icon: "t-trade", def: false, title: "Largest domestic freight flows between regions (PSA domestic trade)", layers: ["trade"] },
 ];
 
 export function install(app) {

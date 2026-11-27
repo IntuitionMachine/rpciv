@@ -26,10 +26,10 @@ const TILE_KM = 300;
 const DIR_COS = [0, 1, 2, 3, 4, 5].map((d) => Math.cos((d * Math.PI) / 3));
 const DIR_SIN = [0, 1, 2, 3, 4, 5].map((d) => Math.sin((d * Math.PI) / 3));
 
-export const ROAD_MIN_RPX = 4; // Primary highways and main-line rail from island/region view in
-export const MAJOR_MIN_RPX = 8; // secondary highways once hexes are big enough to read them
-export const RAIL2_MIN_RPX = 8;
-const DETAIL_RPX = 30; // cobbles, centre dashes, sleepers
+export const ROAD_MIN_RPX = 1.5; // Expressways, AH26 spine & main-line rail from regional/island view in
+export const MAJOR_MIN_RPX = 4; // National primary highways from provincial zoom in
+export const RAIL2_MIN_RPX = 4;
+const DETAIL_RPX = 24; // centre dashes, fine sleepers
 
 // --- network geometry ----------------------------------------------------------------------------------------------
 
@@ -93,23 +93,93 @@ function buildPieces(w, links, classes, offsetOf = null) {
 }
 
 /**
- * infrastructure.json → {roads: tiles, rail: tiles, roadLinks: Set, ports, airports, counts}.
- * Road classes: 0 Interstate, 1 major highway. Rail tiers: 0 main, 1 secondary.
+ * infrastructure.json → {roads: tiles, rail: tiles, roadLinks: Map, roadByCell: Map, railByCell: Map, counts}.
+ * Road classes: 0 Expressway / AH26 spine, 1 national primary highway. Rail tiers: 0 main / metro, 1 secondary.
  */
 export function prepareNetwork(w, infra) {
   const roads = Array.isArray(infra?.roads) ? infra.roads : [];
   const rail = Array.isArray(infra?.rail) ? infra.rail : [];
   const roadLinks = new Map(); // "a,b" → class
-  for (const [a, b, cls] of roads) roadLinks.set(a < b ? `${a},${b}` : `${b},${a}`, cls);
+  const roadByCell = new Map(); // cell → [{a, b, cls, name}]
+  const railByCell = new Map(); // cell → [{a, b, cls, name, off}]
+  const pushCell = (map, cell, rec) => {
+    let l = map.get(cell);
+    if (!l) map.set(cell, (l = []));
+    l.push(rec);
+  };
+  for (const row of roads) {
+    const [a, b, cls, name = ""] = row;
+    roadLinks.set(a < b ? `${a},${b}` : `${b},${a}`, cls);
+    const rec = { a, b, cls, name };
+    pushCell(roadByCell, a, rec);
+    pushCell(roadByCell, b, rec);
+  }
   const R = w.grid.R;
   // Rail on a road link runs alongside it (a fifth of a hex to the side); elsewhere on the centre line.
   const railOff = (a, b) => (roadLinks.has(a < b ? `${a},${b}` : `${b},${a}`) ? 0.2 * R : 0);
+  for (const row of rail) {
+    const [a, b, cls, name = ""] = row;
+    const rec = { a, b, cls, name, off: railOff(a, b) };
+    pushCell(railByCell, a, rec);
+    pushCell(railByCell, b, rec);
+  }
   return {
     roads: buildPieces(w, roads, [1, 0]),
     rail: buildPieces(w, rail, [1, 0], railOff),
     roadLinks,
+    roadByCell,
+    railByCell,
     counts: { roads: roads.length, rail: rail.length },
   };
+}
+
+/** Hit-test a road or rail link near world point (x, y) in km. Returns {kind, cls, name} or null. */
+export function hitNetwork(net, kind, grid, x, y, Rpx) {
+  if (!net || Rpx < ROAD_MIN_RPX) return null;
+  const byCell = kind === "rail" ? net.railByCell : net.roadByCell;
+  if (!byCell || !byCell.size) return null;
+  const c0 = grid.cellAt(x, y);
+  if (c0 < 0) return null;
+  const cells = [c0];
+  if (Rpx < 12) {
+    for (let d = 0; d < 6; d++) {
+      const nb = grid.neighbour(c0, d);
+      if (nb >= 0) cells.push(nb);
+    }
+  }
+  const s = Rpx / grid.R;
+  const minSub = kind === "rail" ? RAIL2_MIN_RPX : MAJOR_MIN_RPX;
+  const maxDistPx = kind === "rail" ? Math.max(8, Rpx * 0.14 + 5) : Math.max(8, roadWidths(Rpx).inter * 0.8 + 5);
+  let best = null;
+  let bestD = maxDistPx;
+  for (const c of cells) {
+    const list = byCell.get(c);
+    if (!list) continue;
+    for (const lnk of list) {
+      if (lnk.cls > 0 && Rpx < minSub) continue;
+      let ax = grid.cx(lnk.a), ay = grid.cy(lnk.a);
+      let bx = grid.cx(lnk.b), by = grid.cy(lnk.b);
+      if (lnk.off) {
+        const dx = bx - ax, dy = by - ay;
+        const len = Math.hypot(dx, dy) || 1;
+        let px = -dy / len, py = dx / len;
+        if (py + 0.3 * px < 0) { px = -px; py = -py; }
+        ax += lnk.off * px; ay += lnk.off * py;
+        bx += lnk.off * px; by += lnk.off * py;
+      }
+      const vx = bx - ax, vy = by - ay;
+      const v2 = vx * vx + vy * vy || 1;
+      const t = clamp(((x - ax) * vx + (y - ay) * vy) / v2, 0, 1);
+      const distPx = Math.hypot(x - (ax + t * vx), y - (ay + t * vy)) * s;
+      // Prefer class 0 (expressways / main rail) slightly when overlapping
+      const score = distPx + (lnk.cls > 0 ? 1.5 : 0);
+      if (distPx <= maxDistPx && score < bestD) {
+        bestD = score;
+        best = { kind, cls: lnk.cls, name: lnk.name };
+      }
+    }
+  }
+  return best;
 }
 
 function visibleTiles(tiles, vp, pad) {
@@ -129,99 +199,106 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 /** Road widths in css px at a zoom (exported for the legend / gallery). */
 export function roadWidths(Rpx) {
-  return { inter: clamp(Rpx * 0.095, 1.7, 9), major: clamp(Rpx * 0.06, 1.1, 5.5) };
+  return { inter: clamp(Rpx * 0.13 + 1.4, 1.9, 9.5), major: clamp(Rpx * 0.08 + 0.85, 1.25, 5.8) };
 }
 
-/** Paved Interstates (stone kerbs, pale paving, cobble joints when close) and dirt-track major highways. */
+/** Expressways & AH26 spine (warm highway gold with dark casing) and national primary highways (crisp cream/amber). */
 export function drawRoads(ctx, net, vp, o) {
   if (!net || o.Rpx < ROAD_MIN_RPX) return;
   const s = vp.s, Rpx = o.Rpx;
   const tiles = visibleTiles(net.roads, vp, 2 * (o.Rpx / s));
   if (!tiles.length) return;
   const { inter, major } = roadWidths(Rpx);
-  const fade = clamp((Rpx - ROAD_MIN_RPX) / 4, 0.55, 1); // softer while just switched on
+  const fade = clamp((Rpx - ROAD_MIN_RPX) / 2.5, 0.72, 1);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const a0 = ctx.globalAlpha;
   ctx.globalAlpha = a0 * fade;
-  // Major highways: a packed-earth track with a darker rut edge.
+  // National primary highways (class 1): dark casing + crisp warm cream/amber core.
   if (Rpx >= MAJOR_MIN_RPX) {
-    ctx.strokeStyle = "rgba(74,56,34,.55)";
-    ctx.lineWidth = (major + 1.4) / s;
+    ctx.strokeStyle = "rgba(38, 28, 16, 0.72)";
+    ctx.lineWidth = (major + 1.6) / s;
     strokeAll(ctx, tiles, 1);
-    ctx.strokeStyle = "#c9ab78";
+    ctx.strokeStyle = "#e0c488";
     ctx.lineWidth = major / s;
     strokeAll(ctx, tiles, 1);
     if (Rpx >= DETAIL_RPX) {
-      ctx.strokeStyle = "rgba(120,92,56,.45)";
+      ctx.strokeStyle = "rgba(120, 88, 46, 0.45)";
       ctx.lineWidth = Math.max(0.6, major * 0.18) / s;
       ctx.setLineDash([major * 0.9 / s, major * 1.6 / s]);
       strokeAll(ctx, tiles, 1);
       ctx.setLineDash([]);
     }
   }
-  // Interstates: dark stone kerb, pale paving, then (close) a cobble rhythm and a faint crown line.
-  ctx.strokeStyle = "rgba(52,40,26,.8)";
-  ctx.lineWidth = (inter + 2.2) / s;
+  // Expressways & AH26 spine (class 0): dark casing, warm highway amber shoulder, bright gold/cream core.
+  ctx.strokeStyle = "rgba(34, 22, 10, 0.88)";
+  ctx.lineWidth = (inter + 2.4) / s;
   strokeAll(ctx, tiles, 0);
-  ctx.strokeStyle = "#a98f63";
-  ctx.lineWidth = (inter + 0.8) / s;
+  ctx.strokeStyle = "#d48a2b";
+  ctx.lineWidth = (inter + 0.9) / s;
   strokeAll(ctx, tiles, 0);
-  ctx.strokeStyle = "#e6d6ad";
-  ctx.lineWidth = inter / s;
+  ctx.strokeStyle = "#f7d67a";
+  ctx.lineWidth = (inter * 0.82) / s;
   strokeAll(ctx, tiles, 0);
   if (Rpx >= DETAIL_RPX) {
-    ctx.lineCap = "butt";
-    ctx.strokeStyle = "rgba(138,112,72,.5)";
-    ctx.lineWidth = inter * 0.92 / s;
-    ctx.setLineDash([0.7 / s, inter * 0.75 / s]);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(255, 250, 232, 0.72)";
+    ctx.lineWidth = Math.max(0.7, inter * 0.16) / s;
+    ctx.setLineDash([inter * 1.1 / s, inter * 1.1 / s]);
     strokeAll(ctx, tiles, 0);
     ctx.setLineDash([]);
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(255,250,232,.55)";
-    ctx.lineWidth = Math.max(0.6, inter * 0.16) / s;
-    strokeAll(ctx, tiles, 0);
   }
   ctx.globalAlpha = a0;
 }
 
-/** Railroads: a ballast bed, sleepers (near), a steel line with a bright edge. Secondary lines thinner, nearer. */
+/** Railroads: crisp pale ballast halo, classic cartographic ticked rail at mid zoom, wooden sleepers + steel near. */
 export function drawRail(ctx, net, vp, o) {
   if (!net || o.Rpx < ROAD_MIN_RPX) return;
   const s = vp.s, Rpx = o.Rpx;
   const tiles = visibleTiles(net.rail, vp, 2 * (Rpx / s));
   if (!tiles.length) return;
-  const fade = clamp((Rpx - ROAD_MIN_RPX) / 4, 0.55, 1);
+  const fade = clamp((Rpx - ROAD_MIN_RPX) / 2.5, 0.78, 1);
   const a0 = ctx.globalAlpha;
   ctx.globalAlpha = a0 * fade;
   ctx.lineJoin = "round";
   const tiers = Rpx >= RAIL2_MIN_RPX ? [1, 0] : [0];
   for (const tier of tiers) {
-    const k = tier === 0 ? 1 : 0.72;
-    const tie = clamp(Rpx * 0.11, 2.6, 9) * k; // sleeper length (css px)
-    const steel = clamp(Rpx * 0.022, 0.9, 2.4) * k;
-    // ballast bed: a pale casing, so the line reads on dark forest as well as on pale plains
+    const k = tier === 0 ? 1 : 0.76;
+    const tie = clamp(Rpx * 0.14 + 2.2, 3.2, 9.5) * k; // sleeper length (css px)
+    const steel = clamp(Rpx * 0.045 + 1.1, 1.4, 3.0) * k;
+    // Pale ballast halo so dark steel stands out cleanly over green forest and brown hills
     ctx.lineCap = "round";
-    ctx.strokeStyle = Rpx >= 16 ? "rgba(168,154,132,.55)" : "rgba(226,214,190,.5)";
-    ctx.lineWidth = (Rpx >= 16 ? tie + 1 : steel + 2.6) / s;
+    ctx.strokeStyle = Rpx >= 10 ? "rgba(222, 214, 196, 0.65)" : "rgba(240, 234, 220, 0.78)";
+    ctx.lineWidth = (Rpx >= 10 ? tie + 1.2 : steel + 2.6) / s;
     strokeAll(ctx, tiles, tier);
-    if (Rpx >= 16) {
-      // sleepers: a dashed line as wide as a sleeper is long
+    if (Rpx >= 10) {
+      // Wooden cross-tie sleepers
       ctx.lineCap = "butt";
-      ctx.strokeStyle = tier === 0 ? "#4a3424" : "rgba(74,52,36,.85)";
+      ctx.strokeStyle = tier === 0 ? "#3c281a" : "rgba(60, 40, 26, 0.85)";
       ctx.lineWidth = tie / s;
-      const gap = clamp(Rpx * 0.06, 2.2, 6);
-      ctx.setLineDash([Math.max(0.9, gap * 0.45) / s, gap / s]);
+      const gap = clamp(Rpx * 0.065, 2.4, 6.2);
+      ctx.setLineDash([Math.max(1.0, gap * 0.48) / s, gap / s]);
       strokeAll(ctx, tiles, tier);
       ctx.setLineDash([]);
     }
+    // Dark charcoal-steel rail
     ctx.lineCap = "round";
-    ctx.strokeStyle = "#2a2522";
-    ctx.lineWidth = (steel + (Rpx >= 16 ? 0 : 0.5)) / s;
+    ctx.strokeStyle = "#1d2228";
+    ctx.lineWidth = steel / s;
     strokeAll(ctx, tiles, tier);
-    if (Rpx >= DETAIL_RPX) {
-      ctx.strokeStyle = "rgba(210,214,222,.7)";
-      ctx.lineWidth = Math.max(0.5, steel * 0.35) / s;
+    if (Rpx < 10) {
+      // Classic alternating ivory/dark-steel cartographic railway dash at regional/mid zoom
+      ctx.lineCap = "butt";
+      ctx.strokeStyle = "rgba(240, 242, 245, 0.9)";
+      ctx.lineWidth = Math.max(0.85, steel * 0.52) / s;
+      const dash = clamp(3.5 + Rpx * 0.25, 3.8, 5.8);
+      ctx.setLineDash([dash / s, dash / s]);
+      strokeAll(ctx, tiles, tier);
+      ctx.setLineDash([]);
+    } else {
+      // Metallic top glint on the rail when zoomed in
+      ctx.strokeStyle = "rgba(218, 226, 236, 0.75)";
+      ctx.lineWidth = Math.max(0.55, steel * 0.34) / s;
       strokeAll(ctx, tiles, tier);
     }
   }

@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from .build.cities import nearest_land
+from .build.infrastructure import hex_distance, hex_walk, straighten
 from .core.geo import MapProjection, geojson_lines
 from .core.hexgrid import HexGrid
 from .core.paths import DATA, WEB_DATA
@@ -108,62 +109,275 @@ def build_resources(world: dict, world_web: dict, cities: list[dict], proj: MapP
     print(f"  resources.json: {len(items)} power plants across {len(types)} types")
 
 
+def _rasterize_line(
+    grid: HexGrid, owner: list[int], proj: MapProjection, raw_line: list[tuple[float, float]],
+    *, step_km: float = 1.0, max_bridge_water: int = 2,
+) -> list[tuple[int, int]]:
+    """Sample a lon/lat polyline onto continuous neighbouring hex links using hex_walk + straighten."""
+    if len(raw_line) < 2:
+        return []
+    pts = [proj(lon, lat) for lon, lat in raw_line]
+    run: list[int] = []
+    for p, q in zip(pts, pts[1:]):
+        dist = math.dist(p, q)
+        steps = max(1, math.ceil(dist / step_km))
+        for s in range(steps + 1):
+            t = s / steps
+            c = grid.cell_at(p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
+            if 0 <= c < grid.size and owner[c] >= 0:
+                if not run or run[-1] != c:
+                    run.append(c)
+    if len(run) < 2:
+        return []
+
+    # Fill gaps between consecutive land cells via hex_walk (bridge narrow straits <= max_bridge_water, break on seas)
+    walked: list[int] = [run[0]]
+    for b in run[1:]:
+        a = walked[-1]
+        if a == b:
+            continue
+        if a >= 0 and b in grid.neighbours(a):
+            walked.append(b)
+        elif a >= 0:
+            hd = hex_distance(grid, a, b)
+            if hd <= 8:
+                seg = hex_walk(grid, a, b)[1:]
+                if all(owner[x] != -2 for x in seg) and sum(1 for x in seg if owner[x] < 0) <= max_bridge_water:
+                    walked.extend(seg)
+                else:
+                    walked.append(-1)
+                    walked.append(b)
+            else:
+                walked.append(-1)
+                walked.append(b)
+        else:
+            walked.append(b)
+
+    pairs: list[tuple[int, int]] = []
+    cur: list[int] = []
+    for x in walked + [-1]:
+        if x < 0:
+            if len(cur) >= 2:
+                cur = straighten(grid, cur)
+                for u, v in zip(cur, cur[1:]):
+                    if (u != v and v in grid.neighbours(u)
+                            and (owner[u] >= 0 or owner[v] >= 0)
+                            and owner[u] != -2 and owner[v] != -2):
+                        pairs.append((min(u, v), max(u, v)))
+            cur = []
+        else:
+            cur.append(x)
+    return pairs
+
+
+def _osm_motorway_label(props: dict) -> str:
+    ref = (props.get("ref") or "").split(";")[0].strip()
+    name = (props.get("name") or "").strip()
+    for kw, lbl in [
+        ("Tarlac-Pangasinan-La Union", "TPLEX (E1)"),
+        ("TPLEX", "TPLEX (E1)"),
+        ("Subic-Clark-Tarlac", "SCTEX (E1/E4)"),
+        ("SCTEX", "SCTEX (E1/E4)"),
+        ("North Luzon Expressway", "NLEX (E1)"),
+        ("NLEX Harbor", "NLEX Harbor Link (E5)"),
+        ("NLEX", "NLEX (E1)"),
+        ("Skyway", "Metro Manila Skyway (E2)"),
+        ("South Luzon Expressway", "SLEX (E2)"),
+        ("SLEX", "SLEX (E2)"),
+        ("STAR Tollway", "STAR Tollway (E2)"),
+        ("Southern Tagalog Arterial", "STAR Tollway (E2)"),
+        ("Cavite-Laguna", "CALAX (E3)"),
+        ("CALAX", "CALAX (E3)"),
+        ("Manila-Cavite", "CAVITEX (E3)"),
+        ("CAVITEX", "CAVITEX (E3)"),
+        ("NAIA Expressway", "NAIAX (E6)"),
+        ("Central Luzon Link", "CLLEX"),
+        ("Cebu-Cordova", "CCLEX"),
+    ]:
+        if kw.lower() in name.lower():
+            return lbl
+    REF_LABELS = {
+        "E1": "NLEX / SCTEX / TPLEX (E1)",
+        "E2": "SLEX / Skyway / STAR (E2)",
+        "E3": "CAVITEX / CALAX (E3)",
+        "E4": "SCTEX (E4)",
+        "E5": "NLEX Harbor Link (E5)",
+        "E6": "NAIAX (E6)",
+    }
+    if ref in REF_LABELS:
+        return REF_LABELS[ref]
+    return name or ref or "Philippine Expressway"
+
+
+# Authoritative Philippine Highway & Rail Corridors (supplementing OSM motorways & HOT OSM railways)
+PH_AH26_SPINE: list[tuple[str, list[tuple[float, float]]]] = [
+    ("Maharlika Hwy (AH26)", [
+        # Northern Luzon: Laoag -> Pagudpud -> Aparri -> Tuguegarao -> Santiago -> Bayombong -> San Jose -> Cabanatuan -> Guiguinto -> Manila
+        (120.596, 18.199), (120.790, 18.560), (121.170, 18.540), (121.635, 18.356),
+        (121.727, 17.613), (121.880, 17.140), (121.549, 16.688), (121.150, 16.480),
+        (120.990, 15.790), (120.968, 15.487), (120.955, 15.220), (120.890, 14.840), (120.984, 14.600),
+    ]),
+    ("Maharlika Hwy (AH26)", [
+        # Southern Luzon / Bicol: Manila -> Calamba -> San Pablo -> Lucena -> Gumaca -> Lopez -> Daet -> Naga -> Legazpi -> Sorsogon -> Matnog
+        (120.984, 14.600), (121.165, 14.212), (121.325, 14.068), (121.617, 13.937),
+        (122.100, 13.920), (122.260, 13.880), (122.650, 14.020), (122.955, 14.112),
+        (123.195, 13.622), (123.410, 13.430), (123.744, 13.139), (124.006, 12.974), (124.086, 12.586),
+    ]),
+    ("Maharlika Hwy (AH26)", [
+        # Eastern Visayas (Samar -> San Juanico Bridge -> Leyte): Allen -> Calbayog -> Catbalogan -> Tacloban -> Abuyog -> Sogod -> Liloan
+        (124.287, 12.500), (124.600, 12.067), (124.884, 11.775), (124.972, 11.500),
+        (125.005, 11.245), (125.012, 10.747), (124.980, 10.386), (125.125, 10.160),
+    ]),
+    ("Maharlika Hwy (AH26)", [
+        # Mindanao Spine: Surigao -> Butuan -> Bayugan -> Trento -> Tagum -> Davao -> Digos -> GenSan -> Koronadal -> Cotabato -> Pagadian -> Zamboanga
+        (125.495, 9.789), (125.541, 8.948), (125.748, 8.714), (126.063, 8.049),
+        (125.808, 7.448), (125.613, 7.073), (125.357, 6.750), (125.172, 6.116),
+        (124.847, 6.503), (124.530, 6.790), (124.246, 7.205), (124.160, 7.620),
+        (123.437, 7.826), (122.760, 7.780), (122.400, 7.450), (122.079, 6.921),
+    ]),
+]
+
+PH_PRIMARY_HIGHWAYS: list[tuple[str, list[tuple[float, float]]]] = [
+    ("MacArthur Hwy (N2)", [
+        (120.984, 14.600), (120.812, 14.852), (120.690, 15.029), (120.597, 15.476),
+        (120.571, 15.976), (120.487, 16.228), (120.317, 16.616), (120.387, 17.575), (120.596, 18.199),
+    ]),
+    ("Kennon / Halsema Hwy (N54)", [
+        (120.487, 16.228), (120.596, 16.402), (120.800, 16.820), (120.977, 17.089), (121.110, 17.410),
+    ]),
+    ("Olongapo–Gapan / Zambales Hwy (N3)", [
+        (120.690, 15.029), (120.460, 14.870), (120.283, 14.829), (119.980, 15.327),
+        (119.910, 15.800), (119.980, 16.156), (120.333, 16.043),
+    ]),
+    ("Mindoro Nautical Hwy (N450)", [
+        (121.180, 13.412), (121.480, 13.030), (121.520, 12.587), (121.340, 12.320), (121.066, 12.353),
+    ]),
+    ("Palawan North–South Hwy", [
+        (119.406, 11.195), (119.510, 10.820), (119.340, 10.320), (118.738, 9.739),
+        (118.410, 9.270), (117.830, 8.780),
+    ]),
+    ("Panay Circumferential Hwy (N5)", [
+        (121.950, 11.930), (122.364, 11.708), (122.751, 11.585), (122.630, 11.120),
+        (122.562, 10.720), (122.020, 10.750), (122.060, 11.420), (121.950, 11.930),
+    ]),
+    ("Negros Occidental–Oriental Hwy (N7)", [
+        (122.951, 10.677), (123.380, 10.870), (123.415, 10.490), (123.305, 9.307),
+        (122.800, 9.380), (122.815, 9.990), (122.951, 10.677),
+    ]),
+    ("Cebu North–South Hwy (N8)", [
+        (124.005, 11.050), (124.027, 10.520), (123.885, 10.316), (123.640, 10.100), (123.380, 9.460),
+    ]),
+    ("Bohol Circumferential Hwy", [
+        (123.853, 9.650), (123.960, 9.950), (124.470, 10.055), (124.365, 9.650), (123.853, 9.650),
+    ]),
+    ("Butuan–CDO–Iligan–Dipolog Hwy (N9)", [
+        (125.541, 8.948), (125.100, 8.820), (124.632, 8.454), (124.245, 8.228),
+        (123.841, 8.148), (123.341, 8.588), (123.437, 7.826),
+    ]),
+    ("Sayre Hwy (N10)", [
+        (124.632, 8.454), (125.128, 8.158), (125.095, 7.906), (124.980, 7.420),
+        (125.089, 7.008), (125.357, 6.750),
+    ]),
+]
+
+PH_RAIL_CORRIDORS: list[tuple[int, str, list[tuple[float, float]]]] = [
+    # Tier 0: PNR North–South Commuter Railway (NSCR: Clark -> Angeles -> San Fernando -> Malolos -> Tutuban -> Calamba)
+    (0, "PNR North–South Commuter (NSCR)", [
+        (120.546, 15.186), (120.592, 15.145), (120.689, 15.028), (120.766, 14.949),
+        (120.812, 14.852), (120.927, 14.798), (120.975, 14.690), (120.973, 14.609),
+        (121.015, 14.555), (121.045, 14.417), (121.080, 14.342), (121.165, 14.212),
+    ]),
+    # Tier 0: PNR South Long Haul (Bicol Line: Calamba -> Los Baños -> San Pablo -> Lucena -> Gumaca -> Tagkawayan -> Sipocot -> Naga -> Iriga -> Legazpi)
+    (0, "PNR South Main Line (Bicol)", [
+        (121.165, 14.212), (121.242, 14.170), (121.325, 14.068), (121.425, 13.930),
+        (121.617, 13.937), (121.730, 13.975), (122.100, 13.920), (122.260, 13.880),
+        (122.460, 13.958), (122.540, 13.965), (122.790, 13.820), (122.976, 13.767),
+        (123.195, 13.622), (123.412, 13.432), (123.540, 13.235), (123.744, 13.139),
+    ]),
+    # Tier 0: Metro Manila LRT-1 / LRT-2 / MRT-3 spine
+    (0, "Metro Manila LRT/MRT", [
+        (120.992, 14.485), (121.000, 14.538), (120.984, 14.600), (120.984, 14.657),
+        (121.033, 14.656), (121.053, 14.621), (121.105, 14.622),
+    ]),
+    # Tier 1: MRT-7 (North Ave -> Fairview -> San Jose del Monte) & PNR Batangas corridor
+    (1, "MRT-7 (QC–SJDM)", [
+        (121.033, 14.656), (121.065, 14.700), (121.075, 14.755), (121.048, 14.814),
+    ]),
+    (1, "PNR Batangas Branch", [
+        (121.165, 14.212), (121.145, 14.110), (121.163, 13.941), (121.058, 13.757),
+    ]),
+]
+
+
 def build_infrastructure(world: dict, world_web: dict, cities: list[dict], proj: MapProjection, grid: HexGrid) -> None:
-    """Build infrastructure.json: PH roads, railways, major seaports, commercial airports."""
+    """Build infrastructure.json: OSM Philippine expressways, AH26 & national highways, PNR/LRT/MRT rail, ports, airports."""
     owner = world["owner"]
     county_arr = world["county"]
     states_abbr = [s["abbr"] for s in world_web["states"]]
     prov_to_city = {pg: c["id"] for c in cities for pg in c["counties"]}
 
-    # 1. Roads from Natural Earth 1:10m (filtered by Philippines bounding box, densified so links are contiguous)
+    # 1. Roads: Class 0 = OSM Expressways + AH26 Maharlika Spine; Class 1 = National Primary Highways + NE 1:10m
     road_links: dict[tuple[int, int], tuple[int, str | None]] = {}
+
+    def add_road(raw_line, cls: int, rname: str | None) -> None:
+        for pair in _rasterize_line(grid, owner, proj, raw_line, step_km=1.0, max_bridge_water=2):
+            cur = road_links.get(pair)
+            if cur is None or cls < cur[0] or (cls == cur[0] and not cur[1] and rname):
+                road_links[pair] = (cls, rname)
+
+    # 1a. Real OpenStreetMap Philippine Motorways (NLEX, SCTEX, TPLEX, CLLEX, Skyway, SLEX, STAR, CALAX, CAVITEX, NAIAX, CCLEX)
+    osm_mw = PH_RAW / "osm_transport/phl_motorways.json"
+    if osm_mw.exists():
+        gj = json.loads(osm_mw.read_text())
+        for feat in gj.get("features", []):
+            rname = _osm_motorway_label(feat.get("properties") or {})
+            for raw_line in geojson_lines(feat["geometry"]):
+                add_road(raw_line, 0, rname)
+
+    # 1b. Pan-Philippine Highway (Maharlika Hwy / AH26) Spine (Class 0)
+    for rname, coords in PH_AH26_SPINE:
+        add_road(coords, 0, rname)
+
+    # 1c. Authoritative National Primary Highways across Luzon, Visayas, Palawan & Mindanao (Class 1)
+    for rname, coords in PH_PRIMARY_HIGHWAYS:
+        add_road(coords, 1, rname)
+
+    # 1d. Natural Earth 1:10m Philippine roads as Class 1 secondary coverage
     ne_roads = json.loads((PH_RAW / "natural_earth_roads/v5.1.2/ne_10m_roads.geojson").read_text())
     for feat in ne_roads["features"]:
         props = feat["properties"]
-        cls = 0 if (props.get("type") in ("Major Highway", "Beltway", "Expressway") or (props.get("scalerank") or 9) <= 5) else 1
-        rname = props.get("name") or props.get("namealtt") or None
+        rname = props.get("name") or props.get("namealtt") or "National Highway"
         for raw_line in geojson_lines(feat["geometry"]):
             if not any(116.5 <= lon <= 127.0 and 4.5 <= lat <= 21.5 for lon, lat in raw_line):
                 continue
-            pts = [proj(lon, lat) for lon, lat in raw_line]
-            prev = -1
-            for p, q in zip(pts, pts[1:]):
-                steps = max(1, math.ceil(math.dist(p, q) / 1.0))
-                for s in range(steps + 1):
-                    t = s / steps
-                    c = grid.cell_at(p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
-                    if c >= 0 and owner[c] >= 0:
-                        if prev >= 0 and prev != c and c in grid.neighbours(prev):
-                            pair = (min(prev, c), max(prev, c))
-                            if pair not in road_links or cls < road_links[pair][0]:
-                                road_links[pair] = (cls, rname)
-                        prev = c
-                    else:
-                        prev = -1
+            add_road(raw_line, 1, rname)
+
     roads = [[a, b, cls, name] for (a, b), (cls, name) in sorted(road_links.items())]
 
-    # 2. Railways from HOT OSM PH railways GeoJSON (densified at 1.0 km steps for 2.5 km hexes)
-    rail_links: set[tuple[int, int]] = set()
+    # 2. Railways: HOT OSM PH railways + continuous PNR Main Line (NSCR + Bicol) & Metro Rail
+    rail_links: dict[tuple[int, int], int] = {}
+
+    def add_rail(raw_line, tier: int) -> None:
+        for pair in _rasterize_line(grid, owner, proj, raw_line, step_km=1.0, max_bridge_water=1):
+            if pair not in rail_links or tier < rail_links[pair]:
+                rail_links[pair] = tier
+
     with zipfile.ZipFile(PH_RAW / "hdx_railways/hotosm_phl_railways_osm_geojson.zip") as z:
         for fn in z.namelist():
-            if fn.endswith(".geojson") or fn.endswith(".json"):
+            if fn.endswith(".geojson"):
                 gj = json.loads(z.read(fn))
                 for feat in gj.get("features", []):
+                    props = feat.get("properties") or {}
+                    if props.get("railway") not in ("rail", "light_rail", "subway"):
+                        continue
+                    tier = 1 if "industrial" in (props.get("name") or "").lower() else 0
                     for raw_line in geojson_lines(feat["geometry"]):
-                        pts = [proj(lon, lat) for lon, lat in raw_line]
-                        prev = -1
-                        for p, q in zip(pts, pts[1:]):
-                            steps = max(1, math.ceil(math.dist(p, q) / 1.0))
-                            for s in range(steps + 1):
-                                t = s / steps
-                                c = grid.cell_at(p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
-                                if c >= 0 and owner[c] >= 0:
-                                    if prev >= 0 and prev != c and c in grid.neighbours(prev):
-                                        rail_links.add((min(prev, c), max(prev, c)))
-                                    prev = c
-                                else:
-                                    prev = -1
-    rail = [[a, b, 0] for a, b in sorted(rail_links)]
+                        add_rail(raw_line, tier)
+
+    for tier, _rname, coords in PH_RAIL_CORRIDORS:
+        add_rail(coords, tier)
+
+    rail = [[a, b, tier] for (a, b), tier in sorted(rail_links.items())]
 
     # 3. Major Philippine Seaports (curated principal PPA ports with exact coordinates)
     MAJOR_PORTS = [
@@ -241,17 +455,18 @@ def build_infrastructure(world: dict, world_web: dict, cities: list[dict], proj:
 
     write_web("infrastructure.json", {
         "version": 1,
-        "vintage": {"roads": "Natural Earth v5.1.2 (1:10m)", "rail": "HOT OSM Philippines (2026)",
+        "vintage": {"roads": "OpenStreetMap Expressways (2026) & Natural Earth v5.1.2 (1:10m)",
+                    "rail": "HOT OSM Philippines Railways & PNR/LRT/MRT Corridors (2026)",
                     "ports": "Major Philippine Seaports (PPA / HOT OSM)", "airports": "OurAirports PH (2026)"},
-        "sources": ["natural_earth_roads", "hdx_railways", "hdx_ports", "ourairports"],
+        "sources": ["osm_transport", "natural_earth_roads", "hdx_railways", "hdx_ports", "ourairports"],
         "rules": {
-            "roads": "Philippine national highways & expressways from Natural Earth 1:10m.",
-            "rail": "Philippine railway corridors (PNR, LRT, MRT) from OpenStreetMap via HDX.",
+            "roads": "Class 0: Philippine expressways (NLEX, SCTEX, TPLEX, CLLEX, Skyway, SLEX, STAR, CALAX, CAVITEX, NAIAX, CCLEX from OpenStreetMap) & Pan-Philippine Highway (AH26 / Maharlika Hwy). Class 1: National primary highways across Luzon, Visayas, Palawan, and Mindanao.",
+            "rail": "Tier 0: PNR Main Line (North–South Commuter Railway Clark–Manila–Calamba & South Long Haul to Naga/Legazpi) plus Metro Manila LRT-1/LRT-2/MRT-3. Tier 1: MRT-7 & regional/branch rail corridors.",
             "ports": "18 principal Philippine seaports and RoRo hubs.",
             "airports": "Commercial Philippine airports with IATA codes (OurAirports).",
         },
-        "road_classes": [{"id": "interstate", "name": "Expressway / Primary"}, {"id": "major", "name": "National highway"}],
-        "rail_tiers": [{"id": "main", "name": "Rail corridor"}, {"id": "secondary", "name": "Secondary rail"}],
+        "road_classes": [{"id": "interstate", "name": "Expressway & AH26 Spine"}, {"id": "major", "name": "National highway"}],
+        "rail_tiers": [{"id": "main", "name": "Main line & Metro rail"}, {"id": "secondary", "name": "Regional / branch rail"}],
         "hubs": {"L": "Major international hub", "M": "Regional hub", "S": "Secondary hub", "N": "Commercial airport"},
         "roads": roads,
         "rail": rail,
@@ -362,6 +577,7 @@ def build_sources() -> None:
         "hdx_psgc": ("Philippines Subnational Administrative Boundaries (COD-AB)", "OCHA / PSA / NAMRIA via HDX", "https://data.humdata.org/dataset/cod-ab-phl", "CC BY-IGO", "Official PSGC hierarchy mapping Regions, Provinces, Cities, Municipalities, and Barangays.", ["PSGC reference codes"], "HDX COD-AB 2026"),
         "natural_earth": ("Natural Earth 1:50m (countries, lakes, rivers)", "Natural Earth", "https://www.naturalearthdata.com/", "Public domain", "Neighboring countries, lakes (Laguna de Bay, Lake Lanao, Taal Lake), and rivers.", ["Foreign land", "Lakes", "Rivers"], "Natural Earth v5.1.2"),
         "natural_earth_roads": ("Natural Earth 1:10m roads and railroads", "Natural Earth", "https://www.naturalearthdata.com/", "Public domain", "National highways and rail alignments.", ["Roads on the map"], "Natural Earth v5.1.2"),
+        "osm_transport": ("OpenStreetMap Philippine Expressways", "OpenStreetMap Contributors (via Overpass API)", "https://www.openstreetmap.org/", "ODbL", "Philippine motorway/expressway geometries (NLEX, SCTEX, TPLEX, CLLEX, Skyway, SLEX, STAR, CALAX, CAVITEX, NAIAX, CCLEX).", ["Expressways on the map"], "OpenStreetMap 2026"),
         "etopo": ("ETOPO1 Global Relief Model", "NOAA NCEI (via ERDDAP)", "https://www.ncei.noaa.gov/products/etopo-global-relief-model", "Public domain", "Elevation and bathymetry sampled every ~3.7 km across the Philippine archipelago.", ["Relief (hills, mountains, peaks)", "Ocean depth"], "ETOPO1"),
         "psa_census_2024": ("2024 Census of Population (POPCEN-CBMS)", "Philippine Statistics Authority (OpenSTAT)", "https://openstat.psa.gov.ph/", "Philippine Open Data", "Population, age/sex, 2010–2024 growth, land area, density, and urbanization by Region, Province, HUC, and City.", ["Population & growth", "City banners", "Density & urbanization lenses"], "PSA 2024 Census"),
         "psa_census_2020": ("2020 Census of Population and Housing", "Philippine Statistics Authority (OpenSTAT)", "https://openstat.psa.gov.ph/", "Philippine Open Data", "2020 population baseline and housing tenure status.", ["Growth baseline", "Housing"], "PSA 2020 CPH"),

@@ -20,6 +20,15 @@ function usd(n) {
 
 const HUB_NAME = { L: "Large hub", M: "Medium hub", S: "Small hub", N: "Regional airport" };
 const PORT_TYPE = { coastal: "Seaport", great_lakes: "Lake port", inland: "River port" };
+const GEO_KIND = {
+  sea: "Sea / Gulf",
+  range: "Mountain range",
+  peak: "Peak / Volcano",
+  lake: "Lake",
+  forest: "Forest / Wetland",
+  plain: "Plain / Valley",
+  river: "River",
+};
 
 export const tips = {
   port(p, m) {
@@ -105,5 +114,23 @@ export const tips = {
     if (com) lines.push(`Top commodity: ${esc(com)}`);
     lines.push(muted("Both directions summed. Drawn as an arc between regional hubs: PSA domestic trade records origin and destination regions, not exact routes."));
     return lines.join("<br>");
+  },
+  feature(f) {
+    const lines = [`<b>${esc(f.name)}</b> ${muted(esc(GEO_KIND[f.kind] || "Geographic feature"))}`];
+    if (f.elev_m != null && Number.isFinite(f.elev_m)) {
+      lines.push(`Elevation <b>${int(f.elev_m)} m</b> ${muted(`(${int(Math.round(f.elev_m * 3.28084))} ft)`)}`);
+    }
+    if (f.note) lines.push(muted(esc(f.note)));
+    return lines.join("<br>");
+  },
+  road(r) {
+    const cls = r.cls === 0 ? "Expressway / AH26 Spine" : "National primary highway";
+    const title = r.name ? `<b>${esc(r.name)}</b> ${muted(cls)}` : `<b>${cls}</b>`;
+    return [title, muted("Philippine expressway and trunk highway network (OpenStreetMap / DPWH).")].join("<br>");
+  },
+  rail(r) {
+    const cls = r.cls === 0 ? "Main-line / Metro rail" : "Regional / secondary rail";
+    const title = r.name ? `<b>${esc(r.name)}</b> ${muted(cls)}` : `<b>${cls}</b>`;
+    return [title, muted("Philippine rail network — PNR, LRT and MRT corridors (OpenStreetMap / DOTr).")].join("<br>");
   },
 };

@@ -351,6 +351,87 @@ PH_MARSHLANDS: list[tuple[float, float, float]] = [
 PASTURE_PROVINCES = {"bukidnon", "masbate", "occidentalmindoro", "sarangani", "southcotabato"}
 SCRUB_PROVINCES = {"ilocosnorte", "ilocossur", "zambales", "pangasinan", "cebu", "bohol", "siquijor", "negrosoriental"}
 
+# Curated Philippine geographic features for cartographic map labels:
+# (name, kind, lon, lat, axis_endpoints_or_None, tier, elev_m_or_None, note)
+PH_GEO_FEATURES: list[tuple[str, str, float, float, tuple[tuple[float, float], tuple[float, float]] | None, int, int | None, str]] = [
+    # --- Seas & Gulfs ---
+    ("West Philippine Sea", "sea", 118.20, 15.00, None, 1, None, "Eastern margin of the South China Sea bordering Luzon and Palawan"),
+    ("Philippine Sea", "sea", 126.20, 15.20, None, 1, None, "Western Pacific marginal sea east of Luzon and the Visayas"),
+    ("Sulu Sea", "sea", 120.80, 8.80, None, 1, None, "Deep inland sea between Palawan, the Visayas, and the Sulu Archipelago"),
+    ("Celebes Sea", "sea", 122.40, 5.10, None, 1, None, "Deep ocean basin south of Mindanao and the Sulu Archipelago"),
+    ("Visayan Sea", "sea", 123.65, 11.40, None, 2, None, "Rich fishing grounds bounded by Masbate, Leyte, Cebu, Negros, and Panay"),
+    ("Sibuyan Sea", "sea", 122.55, 12.60, None, 2, None, "Central archipelago sea separating Luzon from the Visayas"),
+    ("Bohol Sea", "sea", 124.25, 9.20, None, 2, None, "Mindanao Sea between Bohol, Negros, Leyte, and northern Mindanao"),
+    ("Manila Bay", "sea", 120.76, 14.52, None, 2, None, "Natural deep-water harbor fronting Metro Manila, Cavite, and Bataan"),
+    ("Lingayen Gulf", "sea", 120.18, 16.22, None, 2, None, "Broad northwestern Luzon gulf off Pangasinan and La Union"),
+    ("Lamon Bay", "sea", 122.05, 14.35, None, 2, None, "Pacific bay along the eastern coast of Quezon province"),
+    ("Davao Gulf", "sea", 125.78, 6.72, None, 2, None, "Deep southern Mindanao gulf bordered by Davao City and Davao Oriental"),
+    ("Moro Gulf", "sea", 123.50, 6.90, None, 2, None, "Largest gulf in the Philippines, off Zamboanga and Cotabato"),
+    # --- Mountain Ranges ---
+    ("Cordillera Central", "range", 120.95, 17.25, ((120.75, 16.45), (121.15, 18.10)), 1, None, "Highest and most extensive mountain system in northern Luzon"),
+    ("Sierra Madre", "range", 122.12, 16.45, ((121.75, 15.20), (122.35, 17.85)), 1, None, "Longest mountain range in the Philippines, shielding eastern Luzon from typhoons"),
+    ("Zambales Mountains", "range", 120.22, 15.42, ((120.12, 15.90), (120.32, 14.95)), 2, None, "Volcanic coastal range along western Central Luzon, home to Mt. Pinatubo"),
+    ("Caraballo Mountains", "range", 121.05, 16.12, ((120.78, 16.18), (121.35, 16.05)), 2, None, "Central mountain knot linking Cordillera Central and the Sierra Madre"),
+    ("Central Panay Range", "range", 122.28, 11.15, ((122.22, 10.65), (122.35, 11.65)), 2, None, "North-south spine of Panay Island separating Antique from Iloilo and Capiz"),
+    ("Kitanglad Range", "range", 124.88, 8.13, ((124.70, 8.15), (125.08, 8.10)), 2, None, "ASEAN Heritage Park in Bukidnon with several of Mindanao's highest peaks"),
+    ("Pantaron Range", "range", 125.35, 7.90, ((125.30, 7.35), (125.42, 8.45)), 2, None, "Central Mindanao spine and major watershed feeding the Pulangi and Davao rivers"),
+    ("Diwata Mountains", "range", 126.05, 8.55, ((126.15, 7.80), (125.92, 9.25)), 2, None, "Eastern Mindanao coastal range along Surigao and Agusan"),
+    ("Daguma Range", "range", 124.45, 6.42, ((124.20, 6.65), (124.72, 6.18)), 2, None, "Southwestern Mindanao range bordering Sultan Kudarat and South Cotabato"),
+    # --- Major Peaks & Volcanoes ---
+    ("Mt. Apo", "peak", 125.271, 6.987, None, 1, 2954, "Highest peak in the Philippines (Davao del Sur / Cotabato)"),
+    ("Mt. Dulang-dulang", "peak", 124.922, 8.115, None, 2, 2938, "Second-highest peak in the Philippines (Kitanglad Range, Bukidnon)"),
+    ("Mt. Pulag", "peak", 120.899, 16.597, None, 1, 2926, "Highest peak in Luzon, famed for its mossy forest and sea of clouds"),
+    ("Mt. Kitanglad", "peak", 124.920, 8.190, None, 2, 2899, "Fourth-highest peak in the Philippines (Bukidnon)"),
+    ("Mt. Halcon", "peak", 120.994, 13.261, None, 2, 2586, "Highest peak on Mindoro Island"),
+    ("Mt. Kanlaon", "peak", 123.132, 10.412, None, 1, 2465, "Highest peak in the Visayas and active stratovolcano on Negros Island"),
+    ("Mt. Mayon", "peak", 123.685, 13.257, None, 1, 2462, "Active stratovolcano in Albay famed for its near-perfect cone"),
+    ("Mt. Banahaw", "peak", 121.492, 14.067, None, 2, 2170, "Sacred volcanic massif straddling Laguna and Quezon"),
+    ("Mt. Mantalingajan", "peak", 117.674, 8.818, None, 2, 2085, "Highest peak on Palawan Island (Protected Landscape)"),
+    ("Mt. Guiting-Guiting", "peak", 122.567, 12.415, None, 2, 2058, "Jagged peak of Sibuyan Island, Romblon"),
+    ("Mt. Bulusan", "peak", 124.050, 12.770, None, 2, 1565, "Active volcano at the southern tip of the Bicol Peninsula (Sorsogon)"),
+    ("Mt. Pinatubo", "peak", 120.350, 15.130, None, 2, 1486, "Active caldera volcano in the Zambales Mountains (1991 eruption)"),
+    ("Mt. Makiling", "peak", 121.195, 14.136, None, 2, 1090, "Dormant volcano and ASEAN Heritage Park above Los Baños, Laguna"),
+    # --- Lakes ---
+    ("Laguna de Bay", "lake", 121.26, 14.36, None, 1, None, "Largest lake in the Philippines (~911 km²), southeast of Metro Manila"),
+    ("Lake Lanao", "lake", 124.25, 7.88, None, 1, None, "Second-largest lake in the Philippines and ancient tectonic lake in Lanao del Sur"),
+    ("Taal Lake", "lake", 121.00, 13.98, None, 1, None, "Volcanic caldera lake in Batangas enclosing Taal Volcano Island"),
+    ("Lake Mainit", "lake", 125.52, 9.47, None, 2, None, "Deepest lake in the Philippines (Surigao del Norte / Agusan del Norte)"),
+    ("Naujan Lake", "lake", 121.35, 13.17, None, 2, None, "Fifth-largest lake in the Philippines (Ramsar wetland, Oriental Mindoro)"),
+    ("Lake Buluan", "lake", 124.83, 6.64, None, 2, None, "Freshwater lake in the Cotabato Basin (Maguindanao / Sultan Kudarat)"),
+    ("Lake Sebu", "lake", 124.71, 6.22, None, 2, None, "Highland lake and cultural watershed of South Cotabato"),
+    # --- Forests, Wetlands & Biosphere Reserves ---
+    ("Northern Sierra Madre Forest", "forest", 122.25, 17.15, None, 1, None, "Largest protected rainforest in the Philippines (Isabela / Cagayan)"),
+    ("Palawan Biosphere Reserve", "forest", 118.95, 9.85, None, 1, None, "UNESCO Biosphere Reserve spanning Palawan's intact tropical forests and reefs"),
+    ("Agusan Marsh", "forest", 125.84, 8.28, None, 2, None, "Vast freshwater peat swamp and Ramsar wetland in Agusan del Sur"),
+    ("Candaba Swamp", "forest", 120.84, 15.08, None, 2, None, "Seasonal floodplain wetland and migratory bird sanctuary in Pampanga"),
+    ("Liguasan Marsh", "forest", 124.72, 6.96, None, 2, None, "Largest marshland in Mindanao, regulating the Rio Grande de Mindanao basin"),
+    ("Mt. Hamiguitan Forest", "forest", 126.18, 6.74, None, 2, None, "UNESCO World Heritage pygmy bonsai forest in Davao Oriental"),
+    ("Bataan Natural Park", "forest", 120.43, 14.70, None, 2, None, "Mountain rainforest reserve covering Mt. Natib on the Bataan Peninsula"),
+    # --- Plains & Valleys ---
+    ("Cagayan Valley", "plain", 121.72, 17.25, None, 1, None, "Broad fertile alluvial valley between the Cordillera and Sierra Madre"),
+    ("Central Luzon Plain", "plain", 120.78, 15.48, None, 1, None, "Rice Granary of the Philippines, spanning Nueva Ecija, Tarlac, Pampanga, and Bulacan"),
+    ("Bicol Plain", "plain", 123.30, 13.52, None, 2, None, "Fertile alluvial lowland of Camarines Sur and Albay along the Bicol River"),
+    ("Cotabato Basin", "plain", 124.58, 7.12, None, 2, None, "Wide alluvial basin of central Mindanao drained by the Rio Grande de Mindanao"),
+    ("Agusan Valley", "plain", 125.78, 8.62, None, 2, None, "Fertile eastern Mindanao river valley along the Agusan River"),
+]
+
+RIVER_LABEL_PRIORITY = {
+    "Cagayan",
+    "Rio Grande de Mindanao",
+    "Agusan",
+    "Pampanga",
+    "Pasig",
+    "Bicol",
+    "Agno",
+    "Chico",
+    "Magat",
+    "Abra",
+    "Panay",
+    "Jalaur",
+    "Davao",
+    "Cagayan de Oro",
+}
+
 PROV_ALIASES = {
     "mtprovince": "mountainprovince",
     "compostelavalley": "davaodeoro",
@@ -1004,6 +1085,90 @@ def build() -> None:
             if len(pts) >= 2:
                 rivers.append({"name": name, "rank": rank, "pts": [round(v, 1) for p in pts for v in p]})
 
+    # 10. Geographic feature labels (seas, mountain ranges, peaks, lakes, forests/wetlands, plains, major rivers)
+    def upright_angle(dx: float, dy: float) -> float:
+        ang = math.degrees(math.atan2(dy, dx))
+        if ang > 90.0:
+            ang -= 180.0
+        elif ang < -90.0:
+            ang += 180.0
+        return round(max(-80.0, min(80.0, ang)), 1)
+
+    features: list[dict] = []
+    for fname, fkind, flon, flat, axis, ftier, felev, fnote in PH_GEO_FEATURES:
+        fx, fy = proj(flon, flat)
+        if axis is not None:
+            ax0, ay0 = proj(*axis[0])
+            ax1, ay1 = proj(*axis[1])
+            ang = upright_angle(ax1 - ax0, ay1 - ay0)
+        else:
+            ang = 0.0
+        features.append(
+            {
+                "name": fname,
+                "kind": fkind,
+                "x": round(fx, 1),
+                "y": round(fy, 1),
+                "angle": ang,
+                "tier": ftier,
+                "elev_m": felev,
+                "note": fnote,
+            }
+        )
+
+    # River labels: midpoint (x, y) and local tangent angle from the projected river polylines
+    river_best: dict[str, tuple[float, int, list[tuple[float, float]]]] = {}
+    for rv in rivers:
+        rname = rv["name"]
+        if not rname:
+            continue
+        p = rv["pts"]
+        coords = [(p[k], p[k + 1]) for k in range(0, len(p), 2)]
+        length = sum(math.dist(a, b) for a, b in zip(coords, coords[1:]))
+        prev = river_best.get(rname)
+        if prev is None or length > prev[0]:
+            river_best[rname] = (length, rv["rank"], coords)
+
+    ranked_rivers = sorted(river_best.items(), key=lambda kv: kv[1][0], reverse=True)
+    selected_rivers = [
+        (rname, info)
+        for rname, info in ranked_rivers
+        if rname in RIVER_LABEL_PRIORITY
+    ]
+    for rname, (rlen, rrank, coords) in selected_rivers:
+        cum = [0.0]
+        for a, b in zip(coords, coords[1:]):
+            cum.append(cum[-1] + math.dist(a, b))
+        half = cum[-1] * 0.5
+        mid_x, mid_y = coords[len(coords) // 2]
+        ang = 0.0
+        for idx in range(len(coords) - 1):
+            if cum[idx + 1] >= half:
+                seg_len = cum[idx + 1] - cum[idx] or 1.0
+                t = (half - cum[idx]) / seg_len
+                x0, y0 = coords[idx]
+                x1, y1 = coords[idx + 1]
+                mid_x = x0 + t * (x1 - x0)
+                mid_y = y0 + t * (y1 - y0)
+                # Use a ~30 km window around midpoint for a smooth tangent angle
+                i_lo = max(0, idx - 1)
+                i_hi = min(len(coords) - 1, idx + 2)
+                ang = upright_angle(coords[i_hi][0] - coords[i_lo][0], coords[i_hi][1] - coords[i_lo][1])
+                break
+        label_name = rname if ("River" in rname or "Rio " in rname) else f"{rname} River"
+        features.append(
+            {
+                "name": label_name,
+                "kind": "river",
+                "x": round(mid_x, 1),
+                "y": round(mid_y, 1),
+                "angle": ang,
+                "tier": 1 if rrank <= 4 else 2,
+                "elev_m": None,
+                "note": f"Major Philippine river (~{round(rlen)} km mapped length)",
+            }
+        )
+
     water_table = [
         {"id": LAND, "name": "Land", "rule": "Philippine archipelago land (GADM 4.1 ADM2) or neighboring countries (Natural Earth)."},
         {"id": OCEAN, "name": "Ocean", "color": "#1b4266", "rule": "Sea deeper than 200 m and not next to land."},
@@ -1035,7 +1200,7 @@ def build() -> None:
     foreign_hexes = sum(1 for o in owner if o == FOREIGN)
     lake_hexes = sum(1 for w in water if w == LAKE)
     elapsed = time.perf_counter() - t0
-    print(f"  {ph_hexes} Philippine land hexes, {foreign_hexes} foreign land hexes, {lake_hexes} lake hexes, {len(rivers)} rivers ({elapsed:.1f}s)")
+    print(f"  {ph_hexes} Philippine land hexes, {foreign_hexes} foreign land hexes, {lake_hexes} lake hexes, {len(rivers)} rivers, {len(features)} features ({elapsed:.1f}s)")
 
     write_web(
         "world.json",
@@ -1057,6 +1222,7 @@ def build() -> None:
             "states": [{"fips": s["fips"], "abbr": s["abbr"], "name": s["name"]} for s in states],
             "counties": [{"geoid": c["geoid"], "name": c["name"]} for c in counties],
             "rivers": rivers,
+            "features": features,
         },
     )
     save_interim(
