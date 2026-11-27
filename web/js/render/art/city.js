@@ -111,7 +111,7 @@ const P = {
   lawn: [118, 150, 80], lawnBlock: [128, 160, 88], park: [96, 146, 70], path: [218, 208, 176],
   plaza: [204, 194, 168], plazaInner: [224, 216, 194], pond: [92, 160, 206],
   tree: [60, 108, 50], treeMid: [82, 132, 60], treeLit: [128, 170, 82], conifer: [44, 88, 54],
-  field: [[214, 186, 104], [176, 178, 86], [196, 160, 92], [150, 172, 80]],
+  field: [[104, 163, 56], [138, 191, 68], [86, 145, 88], [223, 194, 78]],
   road: [196, 186, 160], roadEdge: [92, 84, 70],
   walls: [[236, 226, 204], [242, 238, 228], [218, 200, 164], [226, 214, 190], [214, 222, 226]],
   roofs: [[170, 78, 56], [124, 82, 60], [92, 98, 112], [184, 110, 66], [70, 82, 100]],
@@ -223,8 +223,107 @@ function gable(g, F, hw, hr, wall, roof, along, lineW) {
   }
 }
 
-/** A round deciduous tree (trunk, dark underside, mid canopy, lit crown) or a two-tier conifer; base at (x, y). */
+/** A Bahay Kubo (Philippine nipa hut on stilts): bamboo stilts, woven sawali walls, steep overhanging nipa thatch roof. */
+function nipaHut(g, F, hw, hr, along, lineW) {
+  const stiltH = hw * 0.42;
+  const wallH = hw * 0.68;
+  const roofH = hr * 1.45;
+  const [N, E, S, W] = F;
+  // Bamboo stilts at the 4 corners
+  g.strokeStyle = "#4d361d";
+  g.lineWidth = Math.max(lineW || 0.004, hw * 0.14);
+  g.lineCap = "round";
+  g.beginPath();
+  for (const pt of [W, S, E]) {
+    g.moveTo(pt[0], pt[1]);
+    g.lineTo(pt[0], pt[1] - stiltH);
+  }
+  g.stroke();
+  // Elevated woven bamboo (sawali) body
+  const Fup = F.map((pt) => up(pt, stiltH));
+  const wall = [204, 166, 108];
+  const thatch = [146, 114, 62];
+  // Slightly overhanging eaves footprint for the nipa roof
+  const cx = (N[0] + S[0]) / 2, cy = (N[1] + S[1]) / 2;
+  const eaveF = Fup.map(([px, py]) => [cx + (px - cx) * 1.24, cy + (py - cy) * 1.24 - wallH]);
+  const [Wu, Su, Eu] = [Fup[3], Fup[2], Fup[1]];
+  const [Wut, Sut, Eut] = [Wu, Su, Eu].map((pt) => up(pt, wallH));
+  fillPoly(g, [Wu, Su, Sut, Wut], css(wall));
+  fillPoly(g, [Su, Eu, Eut, Sut], css(shade(wall, -0.3)));
+  // Steep hipped nipa thatch roof
+  const [Ne, Ee, Se, We] = eaveF;
+  const apex = along === 0
+    ? [up([(Ne[0] + We[0]) / 2, (Ne[1] + We[1]) / 2], roofH), up([(Ee[0] + Se[0]) / 2, (Ee[1] + Se[1]) / 2], roofH)]
+    : [up([(Ne[0] + Ee[0]) / 2, (Ne[1] + Ee[1]) / 2], roofH), up([(We[0] + Se[0]) / 2, (We[1] + Se[1]) / 2], roofH)];
+  const [r0, r1] = apex;
+  const rLit = css(shade(thatch, 0.18)), rDark = css(shade(thatch, -0.26)), rBack = css(shade(thatch, 0.28));
+  if (along === 0) {
+    fillPoly(g, [Ne, Ee, r1, r0], rBack);
+    fillPoly(g, [Se, Ee, r1], rDark);
+    fillPoly(g, [We, Se, r1, r0], rLit);
+  } else {
+    fillPoly(g, [We, Se, r1], rLit);
+    fillPoly(g, [Ne, We, r1, r0], rBack);
+    fillPoly(g, [Ee, Se, r1, r0], rDark);
+  }
+  if (lineW) {
+    g.beginPath();
+    g.moveTo(r0[0], r0[1]);
+    g.lineTo(r1[0], r1[1]);
+    g.strokeStyle = "rgba(232,208,148,.75)";
+    g.lineWidth = lineW * 1.1;
+    g.stroke();
+  }
+}
+
+/** A tropical coconut palm tree (curved trunk, coconuts, drooping fronds); base at (x, y). */
+function palmShape(g, x, y, r, shadowToo = true) {
+  const h = r * 2.55;
+  const lean = ((Math.abs(Math.round(x * 1000 + y * 700)) % 2) ? 1 : -1) * h * 0.2;
+  const tx = x + lean, ty = y - h;
+  if (shadowToo) {
+    g.beginPath();
+    g.ellipse(x + h * 0.22, y + r * 0.08, r * 1.1, r * 0.42, 0, 0, Math.PI * 2);
+    g.fillStyle = "rgba(20,30,10,.24)";
+    g.fill();
+  }
+  // Arched trunk
+  g.beginPath();
+  g.moveTo(x, y);
+  g.quadraticCurveTo(x + lean * 0.35, y - h * 0.52, tx, ty);
+  g.strokeStyle = "#5c4328";
+  g.lineWidth = Math.max(r * 0.22, 0.004);
+  g.lineCap = "round";
+  g.stroke();
+  // Drooping tropical fronds
+  const fronds = [
+    [-0.95, -0.25, -0.45, -0.45, "#6ca83a"],
+    [-0.78, 0.22, -0.42, -0.1, "#4e862b"],
+    [-0.18, -0.82, -0.1, -0.46, "#7ab844"],
+    [0.82, -0.32, 0.42, -0.44, "#5d9632"],
+    [0.92, 0.24, 0.48, -0.08, "#3a6b22"],
+    [0.18, 0.46, 0.14, 0.18, "#2f591c"],
+  ];
+  const fl = r * 1.35;
+  g.lineWidth = Math.max(r * 0.24, 0.004);
+  for (const [dx, dy, cx, cy, col] of fronds) {
+    g.beginPath();
+    g.moveTo(tx, ty);
+    g.quadraticCurveTo(tx + cx * fl, ty + cy * fl, tx + dx * fl, ty + dy * fl);
+    g.strokeStyle = col;
+    g.stroke();
+  }
+  // Tiny coconut cluster
+  g.fillStyle = "#6e5a24";
+  g.beginPath();
+  g.arc(tx - r * 0.14, ty + r * 0.16, r * 0.16, 0, Math.PI * 2);
+  g.arc(tx + r * 0.14, ty + r * 0.18, r * 0.15, 0, Math.PI * 2);
+  g.fill();
+}
+
+/** A round deciduous tree (trunk, dark underside, mid canopy, lit crown) or a tropical coconut palm; base at (x, y). */
 function treeShape(g, x, y, r, conifer, shadowToo = true) {
+  if (conifer) return palmShape(g, x, y, r, shadowToo);
   if (shadowToo) {
     g.beginPath();
     g.ellipse(x + r * 0.6, y + r * 0.1, r * 1.05, r * 0.5, 0, 0, Math.PI * 2);
@@ -502,9 +601,17 @@ function paintVillage(p, seed, accent, Rpx) {
   const items = [];
   for (const sp of houses) {
     const [x, y] = iso(sp.u, sp.v);
+    const isNipa = r() < 0.62;
     const wall = pick(P.walls, r()), roof = r() < 0.2 ? mix(P.roofs[0], accent, 0.55) : pick(P.roofs, r());
     const a = hs * (sp.along === 0 ? 1.05 : 0.75) * (0.9 + r() * 0.2), b = hs * (sp.along === 0 ? 0.75 : 1.05) * (0.9 + r() * 0.2);
-    items.push({ y, draw: () => p.house(x, y, a, b, wall, roof, sp.along) });
+    if (isNipa) {
+      const F = foot(x, y, a, b);
+      const hw = Math.min(a, b) * 0.85, hr = Math.min(a, b) * 0.72;
+      p.shadow(F, hw + hr);
+      items.push({ y, draw: () => nipaHut(g, F, hw, hr, sp.along, p.detail >= 1 ? p.px(0.55) : 0) });
+    } else {
+      items.push({ y, draw: () => p.house(x, y, a, b, wall, roof, sp.along) });
+    }
   }
   {
     const [x, y] = iso(lm.u, lm.v);
@@ -523,8 +630,8 @@ function paintVillage(p, seed, accent, Rpx) {
     if (roadDist(u, v) < roadW + treeR) continue;
     if (placed.some(([pu, pv]) => Math.hypot(pu - u, pv - v) < hs * 1.7)) continue;
     placed.push([u, v]);
-    const conifer = r() < 0.25, tr = treeR * (0.85 + r() * 0.3);
-    items.push({ y, draw: () => p.tree(x, y, tr, conifer) });
+    const palm = r() < 0.62, tr = treeR * (0.85 + r() * 0.3);
+    items.push({ y, draw: () => p.tree(x, y, tr, palm) });
     k++;
   }
 

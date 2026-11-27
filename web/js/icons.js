@@ -105,18 +105,21 @@ const HOUSE = 'M12 2.6L22.4 11.6H19.4V21.4H14.4V15.4H9.6V21.4H4.6V11.6H1.6Z';
 const RAW = {
   // ---- yields
   'y-food': {
+    // drooping palay (Philippine rice panicles)
     bg: '#4f7a22',
     paths: [
-      T('M12 21.6C8.7 21.1 6.6 18.8 6 15.9c2.8.6 5 2.5 6 5.7Z'),
-      T('M12 21.6c3.3-.5 5.4-2.8 6-5.7-2.8.6-5 2.5-6 5.7Z'),
-      S('M12 22V7.5', 1.6),
-      F(ellipse(12, 4.6, 1.6, 2.8)),
-      F(ellipse(9.9, 8.8, 2.9, 1.5, 55)),
-      F(ellipse(14.1, 8.8, 2.9, 1.5, 125)),
-      F(ellipse(9.9, 12.8, 2.9, 1.5, 55)),
-      F(ellipse(14.1, 12.8, 2.9, 1.5, 125)),
-      F(ellipse(9.9, 16.8, 2.9, 1.5, 55)),
-      F(ellipse(14.1, 16.8, 2.9, 1.5, 125)),
+      S('M12 22c-.2-6.4-2.4-11.2-6.8-14.6', 1.5),
+      S('M12 22c.4-6.8 2.8-11.4 7-14.2', 1.5),
+      S('M12 22V8.2', 1.5),
+      F(ellipse(12, 4.8, 1.5, 2.6)),
+      F(ellipse(8.2, 8.6, 2.5, 1.3, 35)),
+      F(ellipse(5.2, 6.8, 2.2, 1.2, 22)),
+      F(ellipse(15.8, 8.6, 2.5, 1.3, 145)),
+      F(ellipse(18.8, 7.0, 2.2, 1.2, 158)),
+      F(ellipse(9.6, 12.6, 2.4, 1.3, 45)),
+      F(ellipse(14.4, 12.6, 2.4, 1.3, 135)),
+      T('M12 21.8C8.6 21.2 6.4 19 5.6 16c3 .6 5.2 2.6 6.4 5.8Z'),
+      T('M12 21.8c3.4-.6 5.6-2.8 6.4-5.8-3 .6-5.2 2.6-6.4 5.8Z'),
     ],
   },
   'y-production': {
@@ -262,8 +265,15 @@ const RAW = {
     ],
   },
   'l-home': {
+    // Bahay kubo (Philippine nipa hut on stilts)
     bg: '#6b4a2f',
-    paths: [T('M15.8 3.4h2.8v6.2l-2.8-2.4Z'), F(HOUSE + 'M10.9 8.4h2.2v2.2h-2.2Z'), D('M6.2 13.2h3.4M14.4 13.2h3.4', 1)],
+    paths: [
+      F('M12 2.2L22.6 10.4H1.4Z'),
+      F('M5.2 10.4h13.6v6.8H5.2Z' + 'M9.6 12h4.8v3.2H9.6Z'),
+      F('M6 17.2h2v4.6H6Z' + 'M16 17.2h2v4.6h-2Z'),
+      T('M10.4 17.2h3.2v4.6h-3.2Z'),
+      D('M6.8 8.2h10.4M9.2 5.6h5.6', 1),
+    ],
   },
   'l-poverty': {
     // an empty drawstring purse with a falling arrow cut through it
@@ -339,17 +349,29 @@ const RAW = {
     ],
   },
   'l-forest': {
-    bg: '#2e5a2a',
+    // Philippine coconut palm tree
+    bg: '#2b5e2e',
     paths: [
-      F('M12 1.4L17.4 7.8H14.8L19.6 13.6H16.4L21 19.2H13.3V22.6H10.7V19.2H3L7.6 13.6H4.4L9.2 7.8H6.6Z'),
-      D('M9.8 7.8L12 5.6M8 13.6L11 11.2M6.2 19.2L10 16.4', 1),
+      F('M9.8 22.2c.2-5 1.2-9.6 2.8-13.2l1.8.6c-1.3 3.5-2.1 7.8-2.3 12.6Z'),
+      F('M13.2 8.8C10.8 6.4 6.6 5.8 2.8 7.6c3.2.6 5.6 1.8 7.8 3.6Z'),
+      F('M13.4 8.6C11.4 4.8 8.2 2.8 4.6 3.2c2.8 1.6 5 3.6 6.8 6.2Z'),
+      F('M13.6 8.4c.8-3.2 3.2-5.4 6.6-5.8-2.4 1.8-4 4-4.8 6.6Z'),
+      F('M13.6 8.8c3.2-1.4 6.6-.8 9.2 1.8-3-.4-5.6.2-8.2 1.4Z'),
+      F('M13.6 9.4c2.8.6 5.2 2.4 6.6 5.2-2.2-1.4-4.4-2.2-7-2.4Z'),
+      T(circle(11.6, 10.6, 1.35) + circle(14.2, 10.8, 1.3)),
     ],
   },
   'l-farmland': {
-    bg: '#7a3a24',
+    // Philippine terraced rice paddies & palay
+    bg: '#4a762a',
     paths: [
-      F('M2.4 10.4L7 4.4h10l4.6 6V21.4H2.4Z' + 'M8.8 13.4h6.4v8H8.8Z' + 'M10.4 7.4h3.2v3h-3.2Z'),
-      TS('M9.4 14l5.2 6.8M14.6 14l-5.2 6.8', 1.6),
+      T('M2.2 11.4c3.4-1.8 7.2-2.6 9.8-2.6s6.4.8 9.8 2.6v2.8c-3.4-1.6-7-2.2-9.8-2.2s-6.4.6-9.8 2.2Z'),
+      F('M1.8 15.2c3.8-1.6 7.4-2.2 10.2-2.2s6.4.6 10.2 2.2v3c-3.8-1.4-7.2-2-10.2-2s-6.4.6-10.2 2Z'),
+      F('M1.8 19c3.8-1.2 7.4-1.8 10.2-1.8s6.4.6 10.2 1.8v2.6H1.8Z'),
+      S('M12 10.4V4.2', 1.4),
+      F(ellipse(12, 3.2, 1.3, 2.0)),
+      F(ellipse(9.4, 5.8, 2.2, 1.1, 35)),
+      F(ellipse(14.6, 5.8, 2.2, 1.1, 145)),
     ],
   },
   'l-developed': {
@@ -520,6 +542,19 @@ const RAW = {
     ],
   },
   'r-gas': { bg: '#2f5a7a', paths: [F(FLAME + 'M12.2 12.4c.6 2.2 3 2.8 3 5.2a3.2 3.2 0 0 1-6.4 0c0-1.8 2-3 3.4-5.2Z')] },
+  'r-biomass': {
+    // Philippine biomass (coconut palm + bioenergy bolt)
+    bg: '#3f6e28',
+    paths: [
+      F('M7.6 22c.2-4.6 1-8.8 2.4-12l1.6.5c-1.1 3.2-1.8 7.2-2 11.5Z'),
+      F('M10.4 9.6C8.2 7.4 4.8 7 1.8 8.6c2.6.5 4.6 1.6 6.4 3.2Z'),
+      F('M10.6 9.4C8.8 6 6.2 4.2 3.2 4.6c2.4 1.4 4.2 3.2 5.6 5.6Z'),
+      F('M10.8 9.2c.8-2.8 2.8-4.8 5.8-5.2-2 1.6-3.4 3.6-4.2 5.8Z'),
+      F('M10.8 9.6c2.6-1.2 5.4-.6 7.6 1.4-2.4-.3-4.6.2-6.8 1.2Z'),
+      T(circle(9.2, 11.2, 1.15) + circle(11.4, 11.4, 1.1)),
+      F(BOLT(5.2, 3.2, 0.88)),
+    ],
+  },
 
   // ---- industries (nation.industries keys; agriculture, mining, real_estate, education and arts are aliases below)
   'i-construction': {
@@ -888,6 +923,13 @@ const RAW = {
       F(circle(12, 15.4, 6.8) + star(12, 15.6, 4, 0.42)),
     ],
   },
+  'l-growth': {
+    bg: '#2f6b46',
+    paths: [
+      S('M3 18.6L8.8 13l4 3.4 7.6-8.8', 2.2),
+      F(poly([[15.2, 6.2], [21.2, 5.8], [20.6, 11.8]])),
+    ],
+  },
   // lens groups (ui/lenses.js and ui/pedia.js look up `g-<group id>`)
   'g-faith': {
     bg: '#5a3a7a',
@@ -916,6 +958,9 @@ const RAW = {
 export const ALIASES = {
   'l-people': 'pop',
   'l-density': 'pop',
+  'l-urban': 'l-developed',
+  'l-gdp': 'y-gold',
+  'l-quake': 'l-disasters',
   'l-degree': 'l-degrees',
   'l-bachelors': 'l-degrees',
   'l-homeowner': 'l-homeownership',

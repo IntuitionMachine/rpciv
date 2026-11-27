@@ -426,10 +426,10 @@ function inGreatBasin(w, i) {
   return lat > 36.2 && lat < 43.6 && lon > -120.3 && lon < -111.8;
 }
 
-/** Centre-pivot irrigation belongs to the dry High Plains and the West (west of ~98°W). */
+/** Centre-pivot irrigation belongs to the dry US High Plains and West (not tropical Philippine rice paddies). */
 function pivotCountry(w, i) {
   const t = geo(w, i);
-  return !t || t.lon[i] < -98;
+  return !!t && t.lon[i] < -98 && t.lon[i] > -130 && t.lat[i] > 24 && t.lat[i] < 50;
 }
 
 // --- 2. cropland patchwork ----------------------------------------------------------------------------------------
@@ -492,42 +492,43 @@ function drawFields(ctx, cells, w, s, dpr, lod, Rpx) {
 }
 
 // Crop colours (corn, soy, wheat, stubble, ploughed earth, hay) and their weights.
+// Philippine irrigated rice paddies: lush young-rice emerald, chartreuse, flooded paddy teal-green, and golden-ripe palay.
 const CROPS = [
-  ["#7f9f3c", 3], ["#94b04a", 2.5], ["#6c8c36", 2], ["#d8b84f", 2.5], ["#e2c86c", 1.5], ["#c9a446", 1.2],
-  ["#d9cc98", 1], ["#a97f50", 1], ["#8d6a45", 0.8], ["#b4bf62", 1.2],
+  ["#5f9b34", 3.2], ["#79b23e", 2.8], ["#4b8a4e", 2.4], ["#94bf48", 2.0], ["#d8be4a", 2.0], ["#e4cc64", 1.3],
+  ["#4d8868", 1.5], ["#6b9e42", 1.8], ["#8c7c4a", 0.7], ["#b8c858", 1.4],
 ].map(([c, wgt]) => [C(c), wgt]);
 const CROP_W = CROPS.map((c) => c[1]);
 
-/** One seamless tile of fields, painted in km (dpx = device px per km): lanes between fields, furrows, windbreaks. */
+/** One seamless tile of Philippine irrigated rice paddies, painted in km: earthen bunds, terraced plots, water glint. */
 function paintFieldTile(g, dpx) {
   const r = rng(4021);
   const T = FIELD_T, px = 1 / dpx;
-  g.fillStyle = "#a18f5d"; // lanes and field margins
+  g.fillStyle = "#8a7a4e"; // raised earthen paddy bunds
   g.fillRect(0, 0, T, T);
-  const lane = Math.max(0.35, px * 0.9);
+  const lane = Math.max(0.32, px * 0.85);
   const furrows = dpx >= 1.6;
   const breaks = [];
   for (let x = 0; x < T; ) {
-    let cw = 13 + r() * 15;
-    if (T - x - cw < 9) cw = T - x;
+    let cw = 10 + r() * 13;
+    if (T - x - cw < 8) cw = T - x;
     for (let y = 0; y < T; ) {
-      let rh = 9 + r() * 19;
-      if (T - y - rh < 8) rh = T - y;
-      // Some fields are split into two strips along their long side.
-      const split = r() < 0.28 ? 2 : 1;
+      let rh = 7 + r() * 14;
+      if (T - y - rh < 7) rh = T - y;
+      // Many paddies are terraced into 2–3 narrow stepped plots.
+      const split = r() < 0.42 ? 2 : 1;
       for (let k = 0; k < split; k++) {
         const vert = cw > rh;
         const fx = vert ? x + (cw / split) * k : x, fy = vert ? y : y + (rh / split) * k;
         const fw = vert ? cw / split : cw, fh = vert ? rh : rh / split;
         paintField(g, r, fx + lane / 2, fy + lane / 2, fw - lane, fh - lane, px, furrows);
       }
-      if (r() < 0.07) breaks.push([x, y + rh, cw, true]);
+      if (r() < 0.08) breaks.push([x, y + rh, cw, true]);
       y += rh;
     }
-    if (r() < 0.2) breaks.push([x + cw, r() * T * 0.6, 30 + r() * 60, false]);
+    if (r() < 0.18) breaks.push([x + cw, r() * T * 0.6, 26 + r() * 52, false]);
     x += cw;
   }
-  // Windbreaks: soft continuous tree lines along a few lanes (never across the tile edge).
+  // Tropical tree lines along paddy dikes.
   if (dpx >= 1.2) {
     for (const [x0, y0, len, horiz] of breaks) {
       const pts = [];
@@ -541,32 +542,35 @@ function paintFieldTile(g, dpx) {
 }
 
 function paintField(g, r, x, y, fw, fh, px, furrows) {
-  const c = CROPS[pickWeighted(r, CROP_W)][0];
+  const idx = pickWeighted(r, CROP_W);
+  const c = CROPS[idx][0];
+  const flooded = idx === 2 || idx === 6; // flooded young-rice paddy catches sky glint
   g.fillStyle = css(c);
   g.fillRect(x, y, fw, fh);
-  // A soft within-field variation (wetter / drier ground), lit from the upper left.
+  // Subtle water sheen / within-paddy variation, lit from the upper left.
   const gr = g.createLinearGradient(x, y, x + fw, y + fh);
-  gr.addColorStop(0, "rgba(255,248,215,.16)");
-  gr.addColorStop(0.6, "rgba(255,248,215,0)");
-  gr.addColorStop(1, "rgba(40,30,0,.12)");
+  gr.addColorStop(0, flooded ? "rgba(215,248,255,.26)" : "rgba(255,248,215,.15)");
+  gr.addColorStop(0.55, "rgba(255,248,215,0)");
+  gr.addColorStop(1, "rgba(25,40,10,.14)");
   g.fillStyle = gr;
   g.fillRect(x, y, fw, fh);
   if (furrows) {
-    const step = Math.max(0.7, px * 3.2);
+    const step = Math.max(0.65, px * 3.0);
     const alongX = fw > fh ? r() < 0.8 : r() < 0.2;
-    g.strokeStyle = css(shade(c, -0.28), 0.38);
-    g.lineWidth = Math.max(px * 0.9, step * 0.28);
+    g.strokeStyle = flooded ? "rgba(210,245,255,.28)" : css(shade(c, -0.26), 0.34);
+    g.lineWidth = Math.max(px * 0.85, step * 0.25);
     g.beginPath();
     if (alongX) for (let yy = y + step / 2; yy < y + fh; yy += step) { g.moveTo(x + 0.2, yy); g.lineTo(x + fw - 0.2, yy); }
     else for (let xx = x + step / 2; xx < x + fw; xx += step) { g.moveTo(xx, y + 0.2); g.lineTo(xx, y + fh - 0.2); }
     g.stroke();
   }
-  g.lineWidth = Math.max(px, 0.15);
-  g.strokeStyle = "rgba(255,246,210,.3)";
+  // Raised earthen bund highlight (top-left) and shadow (bottom-right)
+  g.lineWidth = Math.max(px, 0.16);
+  g.strokeStyle = flooded ? "rgba(220,248,255,.38)" : "rgba(255,246,210,.32)";
   g.beginPath();
   g.moveTo(x, y + fh); g.lineTo(x, y); g.lineTo(x + fw, y);
   g.stroke();
-  g.strokeStyle = "rgba(70,50,20,.3)";
+  g.strokeStyle = "rgba(54,44,20,.36)";
   g.beginPath();
   g.moveTo(x + fw, y); g.lineTo(x + fw, y + fh); g.lineTo(x, y + fh);
   g.stroke();
@@ -718,7 +722,10 @@ function planCell(env, i) {
     const f = lod === "far" ? 1.3 : 1;
     L.forEach(([px, py], k) => up("clump", kind, vary(20 + k, 8), px + (h(30 + k) - 0.5) * 0.1, py + (h(40 + k) - 0.5) * 0.06, f * (0.88 + h(50 + k) * 0.22)));
     if (close) {
-      spots(3, 300, 7).forEach(([px, py], k) => up("tree", kind === "decid" || (kind === "mixed" && k % 2) ? "decid" : "conif", vary(60 + k, 6), px, py, 0.8 + h(70 + k) * 0.2));
+      spots(3, 300, 7).forEach(([px, py], k) => {
+        const tk = kind === "conif" || kind === "conifsnow" ? "conif" : k === 0 ? "palm" : "decid";
+        up("tree", tk, vary(60 + k, 6), px, py, 0.8 + h(70 + k) * 0.2);
+      });
     }
     if (cv === COVER.DECIDUOUS && close) spots(2, 320).forEach(([px, py], k) => up("tuft", "", vary(80 + k, 6), px, py, 0.9));
     return;
@@ -729,15 +736,14 @@ function planCell(env, i) {
   // Ground cover.
   switch (cv) {
     case COVER.CROP: {
-      // The fields themselves are the world-anchored patchwork (drawFields); here: pivots and farmsteads.
-      if (!onHill && pivotCountry(w, i) && h(105) < (elev > 700 ? 0.5 : 0.3)) {
-        const two = h(106) < 0.35;
-        const P = two ? [[-0.3, -0.16], [0.3, 0.24]] : [[0, 0.04]];
-        P.forEach(([px, py], k) => flat("pivot", "", vary(107 + k, 6), px + (h(109 + k) - 0.5) * 0.3, py + (h(111 + k) - 0.5) * 0.24, 0.85 + h(113 + k) * 0.3));
+      // Irrigated rice paddies (drawFields) punctuated by bahay kubo (nipa huts) and coconut palms along bunds.
+      if (near && h(101) < 0.38) {
+        if (onHill) onTops(1, 115, (px, py, z) => up("barn", "", vary(102, 4), px, py, 0.85, z));
+        else up("barn", "", vary(102, 4), (h(103) - 0.5) * 0.65, 0.1 + (h(104) - 0.5) * 0.45, 1.05);
       }
-      if (near && h(101) < 0.3) {
-        if (onHill) onTops(1, 115, (px, py, z) => up("barn", "", vary(102, 4), px, py, 0.8, z));
-        else up("barn", "", vary(102, 4), (h(103) - 0.5) * 0.7, 0.1 + (h(104) - 0.5) * 0.5, 1);
+      if (!onHill && elev < 750 && h(108) < (near ? 0.58 : 0.32)) {
+        const np = close ? 2 : 1;
+        spots(np, 360, 7).forEach(([px, py], k) => up("tree", "palm", vary(370 + k, 6), px, py, 0.82 + h(380 + k) * 0.22));
       }
       break;
     }
@@ -1216,6 +1222,64 @@ function conifTree(g, x, y, h, pal, px, shadow = true, snow = false) {
   }
 }
 
+/** Philippine coconut palm tree: graceful curved trunk, tiny coconut cluster, and 6 drooping tropical fronds. */
+function palmTree(g, x, y, h, px, shadow = true, lean = 1) {
+  const bend = lean * h * 0.18;
+  const tx = x + bend, ty = y - h * 0.84;
+  if (shadow) softShadow(g, x + h * 0.24, y, h * 0.34, h * 0.1, 0.3);
+  // Arched trunk (dark outline + warm lit coconut bark)
+  g.lineCap = "round";
+  g.beginPath();
+  g.moveTo(x, y);
+  g.quadraticCurveTo(x + bend * 0.32, y - h * 0.44, tx, ty);
+  g.strokeStyle = "#3b2918";
+  g.lineWidth = Math.max(px * 2.0, h * 0.085);
+  g.stroke();
+  g.strokeStyle = "#7a5c3c";
+  g.lineWidth = Math.max(px * 1.1, h * 0.048);
+  g.stroke();
+  // Drooping tropical palm fronds radiating from crown (tx, ty)
+  const fl = h * 0.44;
+  const fronds = [
+    [-0.98, -0.18, -0.48, -0.48, "#6aa83a", "#92cc54"],
+    [-0.82, 0.30, -0.46, -0.06, "#4d862a", "#74b040"],
+    [-0.22, -0.78, -0.14, -0.46, "#78b844", "#a2dc62"],
+    [0.82, -0.26, 0.42, -0.46, "#5a9430", "#82bc48"],
+    [0.95, 0.28, 0.50, -0.05, "#3a6e22", "#589232"],
+    [0.18, 0.46, 0.16, 0.18, "#2c581a", "#44782a"],
+  ];
+  for (const [dx, dy, cx, cy, base, hi] of fronds) {
+    const ex = tx + dx * fl, ey = ty + dy * fl;
+    const mx = tx + cx * fl, my = ty + cy * fl;
+    // Frond silhouette
+    g.beginPath();
+    g.moveTo(tx, ty);
+    g.quadraticCurveTo(mx, my - fl * 0.14, ex, ey);
+    g.quadraticCurveTo(mx, my + fl * 0.13, tx, ty);
+    g.closePath();
+    g.fillStyle = base;
+    g.fill();
+    g.strokeStyle = "rgba(18,32,12,.55)";
+    g.lineWidth = Math.max(px * 0.7, 0.004);
+    g.stroke();
+    if (h / px > 16) {
+      g.beginPath();
+      g.moveTo(tx, ty);
+      g.quadraticCurveTo(mx, my - fl * 0.03, ex, ey);
+      g.strokeStyle = hi;
+      g.lineWidth = Math.max(px * 0.7, h * 0.018);
+      g.stroke();
+    }
+  }
+  // Tiny coconut cluster tucked under the crown
+  g.fillStyle = "#5c4a20";
+  for (const [ox, oy] of [[-0.045, 0.05], [0.045, 0.055], [0, 0.08]]) {
+    g.beginPath();
+    g.arc(tx + ox * h, ty + oy * h, Math.max(px * 0.9, h * 0.04), 0, TAU);
+    g.fill();
+  }
+}
+
 function paintClump(g, upx, v, kind) {
   const r = rng(v * 7919 + kind.length * 131 + 7);
   const px = 1 / upx;
@@ -1224,10 +1288,12 @@ function paintClump(g, upx, v, kind) {
   for (let k = 0; k < n; k++) {
     const ang = (k / n) * TAU + r() * 0.6;
     const rad = k === 0 ? 0 : 0.6 + r() * 0.4;
-    const conif = kind.startsWith("conif") || (kind === "mixed" && r() < 0.5);
+    const conif = kind.startsWith("conif") || (kind === "mixed" && r() < 0.25);
+    const palm = !conif && (kind === "decid" ? r() < 0.42 : kind === "mixed" && r() < 0.35);
     trees.push({
-      x: Math.cos(ang) * 0.3 * rad, y: Math.sin(ang) * 0.1 * rad, conif,
-      h: conif ? 0.44 + r() * 0.14 : 0.36 + r() * 0.1,
+      x: Math.cos(ang) * 0.3 * rad, y: Math.sin(ang) * 0.1 * rad, conif, palm,
+      lean: r() < 0.5 ? -1 : 1,
+      h: conif ? 0.44 + r() * 0.14 : palm ? 0.46 + r() * 0.12 : 0.36 + r() * 0.1,
       pal: conif ? CONIF[Math.floor(r() * CONIF.length)] : DECID[Math.floor(r() * (kind === "mixed" ? 5 : 4))],
     });
   }
@@ -1236,6 +1302,7 @@ function paintClump(g, upx, v, kind) {
   for (const t of trees) softShadow(g, t.x + t.h * 0.24, t.y, t.h * 0.36, t.h * 0.1, 0.22);
   for (const t of trees) {
     if (t.conif) conifTree(g, t.x, t.y, t.h, t.pal, px, false, kind === "conifsnow");
+    else if (t.palm) palmTree(g, t.x, t.y, t.h, px, false, t.lean);
     else decidTree(g, t.x, t.y, t.h, t.pal, px, false);
   }
 }
@@ -1243,6 +1310,7 @@ function paintClump(g, upx, v, kind) {
 function paintTree(g, upx, v, kind) {
   const px = 1 / upx;
   if (kind === "conif") conifTree(g, 0, 0, 0.5, CONIF[v % CONIF.length], px);
+  else if (kind === "palm" || (kind === "decid" && v % 2 === 0)) palmTree(g, 0, 0, 0.52, px, true, v % 3 === 0 ? -1 : 1);
   else decidTree(g, 0, 0, 0.44, DECID[v % 4], px);
 }
 
@@ -1993,60 +2061,88 @@ function paintDune(g, upx, v) {
   }
 }
 
-// --- farm buildings ------------------------------------------------------------------------------------------------
+// --- farm buildings (Bahay Kubo / Philippine nipa hut + coconut palm) -----------------------------------------------
 
 function paintBarn(g, upx, v) {
   const px = 1 / upx;
-  const roofs = ["#4b4a4f", "#5a3b2e", "#3f4b57", "#6b6a66"];
-  softShadow(g, 0.1, 0.01, 0.28, 0.07, 0.34);
-  // Silo behind.
-  const sx = -0.2, sw = 0.055, sh = 0.24;
-  let gr = g.createLinearGradient(sx - sw, 0, sx + sw, 0);
-  gr.addColorStop(0, "#f2f0e8");
-  gr.addColorStop(0.5, "#c9c7bd");
-  gr.addColorStop(1, "#86857e");
-  g.fillStyle = gr;
-  g.fillRect(sx - sw, -0.02 - sh, sw * 2, sh);
+  const thatchLit = ["#a68448", "#9c7a42", "#b08e50", "#94743e"][v % 4];
+  const thatchDark = ["#6b5228", "#614924", "#72582c", "#5a4420"][v % 4];
+  softShadow(g, 0.06, 0.02, 0.28, 0.075, 0.34);
+
+  // Four sturdy bamboo stilts lifting the Bahay Kubo off the ground
+  const stiltH = 0.07;
+  g.strokeStyle = "#4a331a";
+  g.lineWidth = Math.max(px * 1.6, 0.018);
+  g.lineCap = "round";
   g.beginPath();
-  g.ellipse(sx, -0.02 - sh, sw, sw * 0.9, 0, Math.PI, 0);
-  g.fillStyle = "#9aa7b3";
-  g.fill();
-  g.strokeStyle = "rgba(40,40,40,.6)";
-  g.lineWidth = px;
-  g.strokeRect(sx - sw, -0.02 - sh, sw * 2, sh);
-  // Barn: gable end facing the viewer (lit), long side going back to the right (shade), roof on top.
-  const d = [0.15, -0.06];
-  const A = [-0.13, 0], B = [0.03, 0], Cc = [0.03, -0.12], P = [-0.05, -0.2], D = [-0.13, -0.12];
+  for (const [sx, sy] of [[-0.14, 0.01], [0.02, 0.01], [0.14, -0.04], [-0.02, -0.04]]) {
+    g.moveTo(sx, sy);
+    g.lineTo(sx, sy - stiltH);
+  }
+  g.stroke();
+
+  // Elevated woven bamboo (sawali) body: front gable wall (lit) + right side wall (shaded)
+  const d = [0.13, -0.05];
+  const A = [-0.14, 0.01 - stiltH], B = [0.02, 0.01 - stiltH];
+  const Cc = [0.02, -0.095 - stiltH], D = [-0.14, -0.095 - stiltH];
   const add = (p) => [p[0] + d[0], p[1] + d[1]];
   const outline = (pts) => {
     poly(g, pts);
-    g.strokeStyle = "rgba(30,14,8,.85)";
-    g.lineWidth = px * 1.6;
+    g.strokeStyle = "rgba(32,20,10,.82)";
+    g.lineWidth = px * 1.4;
     g.stroke();
   };
+  // Shaded right side wall
   outline([B, add(B), add(Cc), Cc]);
-  g.fillStyle = "#7e2a1f";
+  g.fillStyle = "#8c6b3d";
   g.fill();
-  outline([Cc, P, add(P), add(Cc)]);
-  g.fillStyle = roofs[v % roofs.length];
+  // Lit front sawali wall
+  const wgr = g.createLinearGradient(A[0], D[1], B[0], B[1]);
+  wgr.addColorStop(0, "#d4b074");
+  wgr.addColorStop(1, "#b48d52");
+  outline([A, B, Cc, D]);
+  g.fillStyle = wgr;
   g.fill();
-  gr = g.createLinearGradient(-0.13, -0.2, 0.03, 0);
-  gr.addColorStop(0, "#d0563c");
-  gr.addColorStop(1, "#a63a28");
-  outline([A, B, Cc, P, D]);
-  g.fillStyle = gr;
-  g.fill();
-  if (upx > 40) {
-    g.strokeStyle = "rgba(255,245,230,.85)";
-    g.lineWidth = Math.max(px, 0.008);
-    g.strokeRect(-0.085, -0.075, 0.07, 0.075);
+
+  // Open bamboo window + wooden ladder detail when zoomed in
+  if (upx > 34) {
+    g.fillStyle = "#3a2816";
+    g.fillRect(-0.095, -0.075 - stiltH, 0.07, 0.048);
+    g.strokeStyle = "#e6ca92";
+    g.lineWidth = Math.max(px, 0.007);
+    g.strokeRect(-0.095, -0.075 - stiltH, 0.07, 0.048);
+    // Bamboo ladder steps down to ground
+    g.strokeStyle = "#7a5b32";
     g.beginPath();
-    g.moveTo(-0.085, -0.075); g.lineTo(-0.015, 0);
-    g.moveTo(-0.015, -0.075); g.lineTo(-0.085, 0);
-    g.moveTo(D[0], D[1]); g.lineTo(P[0], P[1]); g.lineTo(Cc[0], Cc[1]);
+    g.moveTo(-0.08, 0.01 - stiltH); g.lineTo(-0.1, 0.015);
+    g.moveTo(-0.04, 0.01 - stiltH); g.lineTo(-0.06, 0.015);
     g.stroke();
   }
-  decidTree(g, 0.22, 0.03, 0.2, DECID[v % 3], px);
+
+  // Steep overhanging nipa-thatch hipped/gabled roof
+  const eaveL = [-0.175, -0.08 - stiltH];
+  const eaveR = [0.055, -0.08 - stiltH];
+  const eaveBackR = [eaveR[0] + d[0], eaveR[1] + d[1]];
+  const ridgeF = [-0.06, -0.22 - stiltH];
+  const ridgeB = [ridgeF[0] + d[0] * 0.85, ridgeF[1] + d[1] * 0.85];
+  // Shaded right roof slope
+  outline([eaveR, eaveBackR, ridgeB, ridgeF]);
+  g.fillStyle = thatchDark;
+  g.fill();
+  // Lit front thatch slope
+  outline([eaveL, eaveR, ridgeF]);
+  g.fillStyle = thatchLit;
+  g.fill();
+  // Golden-straw ridge highlight
+  g.beginPath();
+  g.moveTo(ridgeF[0], ridgeF[1]);
+  g.lineTo(ridgeB[0], ridgeB[1]);
+  g.strokeStyle = "rgba(236,214,152,.85)";
+  g.lineWidth = Math.max(px * 1.2, 0.012);
+  g.stroke();
+
+  // Graceful coconut palm right beside the nipa hut
+  palmTree(g, 0.22, 0.03, 0.32, px, true, v % 2 === 0 ? 1 : -1);
 }
 
 // --- ground sprites (whole hex) -------------------------------------------------------------------------------------
@@ -2292,27 +2388,31 @@ function paintMarsh(g, upx, v) {
       }
     }
   }
-  // Reed and cattail clumps along the pool edges.
-  const clumps = pools.flatMap(([x, y, rx, ry]) => [[x - rx * 0.9, y + ry * 0.6], [x + rx * 0.8, y + ry * 0.9]]);
+  // Tropical mangrove prop-root & canopy clusters bordering the brackish pools.
+  const clumps = pools.flatMap(([x, y, rx, ry]) => [[x - rx * 0.82, y + ry * 0.45], [x + rx * 0.72, y + ry * 0.65]]);
   clumps.sort((p, q) => p[1] - q[1]);
   for (const [cx, cy] of clumps) {
-    const m = 6 + Math.floor(r() * 4);
-    const lw = Math.max(px * 1.1, 0.009);
-    for (let k = 0; k < m; k++) {
-      const bx = cx + (r() - 0.5) * 0.08, hh = 0.09 + r() * 0.09, lean = (r() - 0.5) * 0.05;
-      g.strokeStyle = k % 3 ? "#5c7a36" : "#3c5626";
-      g.lineWidth = lw;
-      g.beginPath();
-      g.moveTo(bx, cy);
-      g.quadraticCurveTo(bx + lean * 0.3, cy - hh * 0.6, bx + lean, cy - hh);
-      g.stroke();
-      if (upx > 34 && k % 3 === 0) {
-        g.fillStyle = "#6b4528";
-        g.beginPath();
-        g.ellipse(bx + lean * 0.9, cy - hh * 0.92, lw * 1.2, Math.max(0.022, px * 2.5), 0, 0, TAU);
-        g.fill();
-      }
+    const cr = 0.065 + r() * 0.035;
+    // Arched dark-brown mangrove prop roots dipping into the water
+    g.strokeStyle = "#4a3622";
+    g.lineWidth = Math.max(px * 1.1, 0.009);
+    g.beginPath();
+    for (let k = -2; k <= 2; k++) {
+      g.moveTo(cx + k * cr * 0.22, cy - cr * 0.45);
+      g.quadraticCurveTo(cx + k * cr * 0.48, cy - cr * 0.1, cx + k * cr * 0.62, cy + cr * 0.18);
     }
+    g.stroke();
+    // Deep lush tropical mangrove canopy with lit top
+    g.fillStyle = "#264d24";
+    g.beginPath();
+    g.arc(cx, cy - cr * 0.72, cr, 0, TAU);
+    g.arc(cx - cr * 0.55, cy - cr * 0.52, cr * 0.72, 0, TAU);
+    g.arc(cx + cr * 0.55, cy - cr * 0.5, cr * 0.7, 0, TAU);
+    g.fill();
+    g.fillStyle = "#487c34";
+    g.beginPath();
+    g.arc(cx - cr * 0.22, cy - cr * 0.88, cr * 0.62, 0, TAU);
+    g.fill();
   }
 }
 
